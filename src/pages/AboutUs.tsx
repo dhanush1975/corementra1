@@ -59,7 +59,8 @@ const About = () => {
     "Life Insurance with Living Benefits: Ensuring your family's financial stability.",
     "Tax-Advantaged Strategies: Maximizing wealth growth and retention.",
     "Wealth Education for Heirs: Preparing younger generations to manage and grow wealth responsibly.",
-    "Defining Your Family Mission: Aligning your wealth with your values to create a lasting legacy."
+    "Defining Your Family Mission: Aligning your wealth with your values to create a lasting legacy.",
+    "Investment Strategies: Your financial plan is not a one-time event—it evolves with your life. We perform regular reviews to keep your investments aligned with your goals and on track."
   ];
 
   return (
@@ -71,7 +72,7 @@ const About = () => {
           <div className="relative max-w-6xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div className="animate-fade-in">
-                <Badge className="mb-4 bg-blue-100 text-blue-700 hover:bg-blue-200">
+                <Badge className="mb-4 bg-blue-100 text-blue-700 hover:bg-blue-200 text-lg">
                   We practice what we preach
                 </Badge>
                 <h1 className="text-5xl lg:text-6xl font-light text-gray-900 mb-6 leading-tight">
@@ -79,7 +80,7 @@ const About = () => {
                 </h1>
                 <div className="h-1 w-20 bg-gradient-to-r from-blue-600 to-purple-600 mb-6" />
                 <p className="text-xl text-gray-700 leading-relaxed mb-8">
-                We help individuals and organizations confidently plan for retirement, long-term care, and legacy transfer by offering tailored financial strategies. With a focus on trust, clarity, and long-term peace of mind, my goal is to deliver exceptional results that reflect each client’s unique needs and aspirations.
+                We help individuals and organizations confidently plan for retirement, long-term care, and legacy transfer by offering tailored financial strategies. With a focus on trust, clarity, and long-term peace of mind, Our goal is to deliver exceptional results that reflect each client’s unique needs and aspirations.
                 </p>
                 
               </div>

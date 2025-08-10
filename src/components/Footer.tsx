@@ -53,7 +53,7 @@ export const Footer = ({ className = "" }: FooterProps) => {
       <Instagram className="w-5 h-5" />
     </a>
     <a
-      href="www.linkedin.com/in/corementra"
+      href="https://www.linkedin.com/in/corementra/"
       target="_blank"
       rel="noopener noreferrer"
       className="p-2 hover:bg-white/10 rounded transition-colors"
