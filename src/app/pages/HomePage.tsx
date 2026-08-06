@@ -1,9 +1,55 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import heroImage from "@/imports/Gemini_Generated_Image_jsh7lajsh7lajsh7.png";
 import aboutPhoto from "@/imports/profile-photo/PHOTO-2026-07-28-17-17-14.jpg";
 import { ImageWithFallback } from "@/app/components/figma/ImageWithFallback";
-import { ArrowRight, Briefcase, Shield, TrendingUp, Star, Heart, CheckCircle } from "lucide-react";
+import { ArrowRight, Briefcase, Shield, TrendingUp, Star, Heart, CheckCircle, X } from "lucide-react";
 import { Page, PillBtn, Label, SectionHeading, Card, StatRow, CTABanner, CALENDLY_URL, inter } from "./shared";
+
+function RateBadge() {
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (dismissed) return null;
+
+  return (
+    <div
+      className={`fixed bottom-6 right-6 z-50 transition-all duration-500 ${
+        visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95 pointer-events-none"
+      }`}
+    >
+      <div className="relative">
+        <button
+          onClick={() => setDismissed(true)}
+          aria-label="Dismiss"
+          className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white text-[#0a0a0a] border border-[#e5e5e5] flex items-center justify-center shadow-md hover:bg-neutral-100 transition-colors z-10"
+        >
+          <X size={12} />
+        </button>
+        <a
+          href="https://agents.ethoslife.com/invite/efb422"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-start gap-3 bg-[#0a0a0a] text-white pl-4 pr-4 py-4 rounded-2xl shadow-2xl max-w-[280px] hover:bg-[#333] hover:scale-105 transition-all"
+          style={{ fontFamily: inter }}
+        >
+          <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+            <Heart size={16} className="text-[#0070f3]" fill="currentColor" />
+          </div>
+          <div className="leading-snug">
+            <div className="text-sm font-bold">Get Your Instant Insurance Quote in Under 60 Seconds!</div>
+            <div className="text-xs text-[#a3a3a3] font-medium mt-1">Fast, free, and tailored to your needs.</div>
+          </div>
+          <ArrowRight size={14} className="shrink-0 mt-0.5" />
+        </a>
+      </div>
+    </div>
+  );
+}
 
 function HeroCard() {
   const tabs = ["Careers", "Estate", "Retirement", "HNWI", "Insurance"] as const;
@@ -142,21 +188,7 @@ export function HomePage({ navigate }: { navigate: (p: Page) => void }) {
 
   return (
     <div style={{ fontFamily: inter }}>
-      <a
-        href="https://agents.ethoslife.com/invite/efb422"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-[#0a0a0a] text-white pl-4 pr-5 py-3 rounded-2xl shadow-2xl hover:bg-[#333] hover:scale-105 transition-all"
-        style={{ fontFamily: inter }}
-      >
-        <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-          <Heart size={16} className="text-[#0070f3]" fill="currentColor" />
-        </div>
-        <div className="leading-tight">
-          <div className="text-[10px] font-medium text-[#a3a3a3] uppercase tracking-[0.08em]">Life Insurance</div>
-          <div className="text-sm font-bold flex items-center gap-1">Get Your Rates <ArrowRight size={13} /></div>
-        </div>
-      </a>
+      <RateBadge />
 
       <section className="relative min-h-screen flex items-center overflow-hidden">
         <ImageWithFallback
