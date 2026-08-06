@@ -13,7 +13,7 @@ export function WhoAmIPage({ navigate }: { navigate: (p: Page) => void }) {
 
   return (
     <div style={{ fontFamily: inter }}>
-      <section className="relative pt-40 pb-24 px-6 bg-white overflow-hidden">
+      <section className="relative pt-28 pb-24 px-6 bg-white overflow-hidden">
         <div className="absolute inset-0">
           <img src="https://images.unsplash.com/photo-1600880292089-90a7e086ee0c?w=1600&h=800&fit=crop&auto=format" alt="" className="w-full h-full object-cover opacity-[0.05]" />
         </div>
