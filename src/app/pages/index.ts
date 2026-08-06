@@ -1,0 +1,12 @@
+export { HomePage } from "./HomePage";
+export { WhoAmIPage } from "./WhoAmIPage";
+export { FAQPage } from "./FAQPage";
+export { ServicesPage } from "./ServicesPage";
+export { ProfessionalCareersPage } from "./ProfessionalCareersPage";
+export { EstatePlanningPage } from "./EstatePlanningPage";
+export { RetirementPlanningPage } from "./RetirementPlanningPage";
+export { HNWIPage } from "./HNWIPage";
+export { LifeInsurancePage } from "./LifeInsurancePage";
+export { ContactPage } from "./ContactPage";
+export { ResourcesPage } from "./ResourcesPage";
+export type { Page } from "./shared";
