@@ -41,7 +41,7 @@ function RateBadge() {
             <Heart size={16} className="text-[#0070f3]" fill="currentColor" />
           </div>
           <div className="leading-snug">
-            <div className="text-sm font-bold">Get Your Instant Insurance Quote in Under 60 Seconds!</div>
+            <div className="text-sm font-bold">Get Your Instant Insurance Quote in Under 10 Minutes!</div>
             <div className="text-xs text-[#a3a3a3] font-medium mt-1">Fast, free, and tailored to your needs.</div>
           </div>
           <ArrowRight size={14} className="shrink-0 mt-0.5" />

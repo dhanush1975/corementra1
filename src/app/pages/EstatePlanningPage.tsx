@@ -82,9 +82,9 @@ export function EstatePlanningPage({ navigate }: { navigate: (p: Page) => void }
                 <h3 className="text-[#0a0a0a] font-bold text-lg mb-3">Will</h3>
                 <p className="text-[#737373] text-sm leading-relaxed">A will distributes your assets after death but typically requires probate — a public court process that can be time-consuming and costly for your family.</p>
               </div>
-              <div className="bg-[#0a0a0a] rounded-xl p-6">
-                <h3 className="text-white font-bold text-lg mb-3">Living Trust</h3>
-                <p className="text-[#a3a3a3] text-sm leading-relaxed">A living trust takes effect immediately and helps your family avoid probate entirely — keeping your affairs private and distributing assets more quickly.</p>
+              <div className="bg-[#eff6ff] border border-[#0070f3]/20 rounded-xl p-6">
+                <h3 className="text-[#0a0a0a] font-bold text-lg mb-3">Living Trust</h3>
+                <p className="text-[#525252] text-sm leading-relaxed">A living trust takes effect immediately and helps your family avoid probate entirely — keeping your affairs private and distributing assets more quickly.</p>
               </div>
             </div>
           </div>
