@@ -16,8 +16,6 @@ export function ServicesPage({ navigate }: { navigate: (p: Page) => void }) {
     { title: "Implementation", desc: "Clear communication, availability, and collaborative execution." },
   ];
 
-  const caseStudies = ["TAX-ADVANTAGED", "DOWNSIDE RISK PROTECTION", "GUARANTEED LIFETIME INCOME", "LEGACY TRANSFER"];
-
   return (
     <div style={{ fontFamily: inter }}>
       <section className="relative pt-40 pb-24 px-6 bg-white overflow-hidden border-b border-[#e5e5e5]">
@@ -65,25 +63,6 @@ export function ServicesPage({ navigate }: { navigate: (p: Page) => void }) {
                 </div>
                 <h3 className="text-base font-bold text-[#0a0a0a] mb-2">{p.title}</h3>
                 <p className="text-sm text-[#737373] leading-relaxed">{p.desc}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 px-6 border-t border-[#e5e5e5] bg-white">
-        <div className="max-w-[1200px] mx-auto">
-          <div className="mb-10">
-            <Label>Real Results</Label>
-            <SectionHeading className="text-4xl">Case Studies</SectionHeading>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {caseStudies.map(cs => (
-              <Card key={cs} className="cursor-pointer group">
-                <h3 className="text-[#0a0a0a] font-bold text-xs uppercase tracking-[0.1em] mb-4">{cs}</h3>
-                <button className="text-[#0070f3] text-xs font-semibold flex items-center gap-1 hover:gap-2 transition-all uppercase tracking-[0.08em]">
-                  See Results <ArrowRight size={11} />
-                </button>
               </Card>
             ))}
           </div>

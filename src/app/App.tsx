@@ -117,9 +117,11 @@ function Navbar({ currentPage, navigate }: { currentPage: Page; navigate: (p: Pa
           </div>
 
           <div className="flex-1 flex items-center justify-end gap-3">
-            <PillBtn href={CALENDLY_URL} className="hidden lg:inline-flex text-xs">
-              Schedule a Meeting
-            </PillBtn>
+            <div className="hidden lg:block">
+              <PillBtn href={CALENDLY_URL} className="text-xs">
+                Schedule a Meeting
+              </PillBtn>
+            </div>
             <button className="lg:hidden p-2 text-[#0a0a0a]" onClick={() => setMobileOpen(!mobileOpen)}>
               {mobileOpen ? <X size={20} /> : <Menu size={20} />}
             </button>

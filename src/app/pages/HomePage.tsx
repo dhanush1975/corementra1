@@ -18,7 +18,7 @@ function RateBadge() {
 
   return (
     <div
-      className={`fixed bottom-6 right-6 z-50 transition-all duration-500 ${
+      className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 max-w-[calc(100vw-2rem)] transition-all duration-500 ${
         visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-4 scale-95 pointer-events-none"
       }`}
     >
@@ -34,15 +34,16 @@ function RateBadge() {
           href="https://agents.ethoslife.com/invite/efb422"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-start gap-3 bg-[#0a0a0a] text-white pl-4 pr-4 py-4 rounded-2xl shadow-2xl max-w-[280px] hover:bg-[#333] hover:scale-105 transition-all"
+          className="flex items-start gap-2.5 sm:gap-3 bg-[#0a0a0a] text-white pl-3 pr-3 py-3 sm:pl-4 sm:pr-4 sm:py-4 rounded-2xl shadow-2xl w-[240px] sm:w-[280px] hover:bg-[#333] hover:scale-105 transition-all"
           style={{ fontFamily: inter }}
         >
-          <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-            <Heart size={16} className="text-[#0070f3]" fill="currentColor" />
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+            <Heart size={14} className="text-[#0070f3] sm:hidden" fill="currentColor" />
+            <Heart size={16} className="text-[#0070f3] hidden sm:block" fill="currentColor" />
           </div>
           <div className="leading-snug">
-            <div className="text-sm font-bold">Get Your Instant Insurance Quote in Under 10 Minutes!</div>
-            <div className="text-xs text-[#a3a3a3] font-medium mt-1">Fast, free, and tailored to your needs.</div>
+            <div className="text-xs sm:text-sm font-bold">Get Your Instant Insurance Quote in Under 10 Minutes!</div>
+            <div className="text-[11px] sm:text-xs text-[#a3a3a3] font-medium mt-1">Fast, free, and tailored to your needs.</div>
           </div>
           <ArrowRight size={14} className="shrink-0 mt-0.5" />
         </a>
@@ -185,6 +186,18 @@ export function HomePage({ navigate }: { navigate: (p: Page) => void }) {
     { num: "03", title: "Implementation", desc: "Executing strategies and navigating available financial products, ensuring alignment with long-term goals." },
     { num: "04", title: "Review", desc: "A living, evolving strategy with regular check-ins to monitor progress as your life changes." },
   ];
+
+  const testimonials = [
+    { name: "Priya Sharma", text: "Amit made retirement planning simple and stress-free. I finally feel in control of my future." },
+    { name: "Rajesh Iyer", text: "Clear advice, no pressure. He explained every option until I actually understood it." },
+    { name: "Anjali Mehta", text: "Estate planning felt overwhelming until we sat down together. My family is protected now." },
+    { name: "Vikram Malhotra", text: "Honest, patient, and genuinely invested in my goals. I recommend him to everyone I know." },
+    { name: "Sneha Reddy", text: "I never thought I could afford a real plan. He showed me options I didn't know existed." },
+    { name: "Arjun Nair", text: "Responsive, knowledgeable, and easy to reach. Working with him has been reassuring." },
+    { name: "Kavita Desai", text: "He took the time to explain the why behind every recommendation. That built real trust." },
+    { name: "Rohan Gupta", text: "Protecting my family and my business finally feels handled, not just hoped for." },
+  ];
+  const testimonialLoop = [...testimonials, ...testimonials];
 
   return (
     <div style={{ fontFamily: inter }}>
@@ -339,6 +352,29 @@ export function HomePage({ navigate }: { navigate: (p: Page) => void }) {
                 <h3 className="text-base font-bold text-[#0a0a0a] mb-2 tracking-[-0.01em]">{step.title}</h3>
                 <p className="text-sm text-[#737373] leading-relaxed">{step.desc}</p>
               </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-24 border-t border-[#e5e5e5] bg-white overflow-hidden">
+        <div className="max-w-[1200px] mx-auto px-6 text-center mb-14">
+          <Label>Client Stories</Label>
+          <SectionHeading className="mb-3">What Clients Are Saying</SectionHeading>
+          <p className="text-[#737373] max-w-lg mx-auto text-[15px]">Real feedback from people I've helped plan for their future.</p>
+        </div>
+        <div className="[mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]">
+          <div className="flex w-max gap-4 px-6 animate-[marquee-left_40s_linear_infinite] hover:[animation-play-state:paused]">
+            {testimonialLoop.map((t, i) => (
+              <div key={i} className="w-[320px] shrink-0 bg-[#f5f5f5] border border-[#e5e5e5] rounded-2xl p-6">
+                <p className="text-[#525252] text-sm leading-relaxed line-clamp-3 mb-5">"{t.text}"</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-[#0a0a0a] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                    {t.name.split(" ").map(n => n[0]).join("")}
+                  </div>
+                  <div className="text-sm font-bold text-[#0a0a0a]">{t.name}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>

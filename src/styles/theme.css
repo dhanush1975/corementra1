@@ -180,3 +180,12 @@
     line-height: 1.5;
   }
 }
+
+@keyframes marquee-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
