@@ -50,13 +50,17 @@ export function useDb() {
     });
   }, []);
 
-  const resetSeed = useCallback(() => {
-    if (window.confirm("Replace all records with the sample data?")) commit(seed(), "Sample data restored");
+  const resetSeed = useCallback((onConfirmed?: () => void) => {
+    if (window.confirm("Replace all records with the sample data?")) {
+      commit(seed(), "Sample data restored");
+      onConfirmed?.();
+    }
   }, [commit]);
 
-  const resetEmpty = useCallback(() => {
+  const resetEmpty = useCallback((onConfirmed?: () => void) => {
     if (window.confirm("Delete every record? Export a backup first if you need one.")) {
       commit(EMPTY_DB, "All records cleared");
+      onConfirmed?.();
     }
   }, [commit]);
 

@@ -51,24 +51,19 @@ export function DashboardApp() {
         listAll<PartnerIncome>(client.models.PartnerIncome as any),
         client.models.Settings.get({ id: SETTINGS_ID }),
       ]);
-      const hasIncome = salesRaw.length > 0 || partnerRaw.length > 0 || !!settingsRes.data;
-
-      // If a table is empty, the UI falls back to sample data below — but
-      // that sample data must actually be written to the backend here, not
-      // just held in local state. Otherwise the first time someone edits or
-      // toggles one of those rows, diffAndSync sees its id as "already
-      // existing" and fires an update() against a record that was never
-      // created, which fails completely silently.
+      // Products are real catalog data (loaded from the CSV import), so an
+      // empty table really does mean "never seeded" — fall back and persist.
+      // Income (Sales/Partner) has no such real baseline: an empty table
+      // means the user genuinely wants it empty (e.g. after a reset), so it
+      // must NOT be auto-repopulated with sample numbers on every load.
       const seededProducts = productsRaw.length ? productsRaw : PROD_SEED;
       if (!productsRaw.length) diffAndSync(client.models.Product as any, [], seededProducts);
 
-      const seededIncome = hasIncome
-        ? { levels: settingsRes.data?.levels?.filter((n): n is number => n != null) ?? [10, 5, 3], sales: salesRaw, partner: partnerRaw }
-        : seedIncome(db, seededProducts);
-      if (!hasIncome) {
-        diffAndSync(client.models.Sale as any, [], seededIncome.sales);
-        diffAndSync(client.models.PartnerIncome as any, [], seededIncome.partner);
-      }
+      const seededIncome: IncomeData = {
+        levels: settingsRes.data?.levels?.filter((n): n is number => n != null) ?? [10, 5, 3],
+        sales: salesRaw,
+        partner: partnerRaw,
+      };
 
       setProducts(seededProducts);
       setIncome(seededIncome);
@@ -90,6 +85,18 @@ export function DashboardApp() {
     diffAndSync(client.models.Sale as any, income.sales, next.sales);
     diffAndSync(client.models.PartnerIncome as any, income.partner, next.partner);
     setIncome(next);
+  };
+
+  const clearIncome = () => {
+    diffAndSync(client.models.Sale as any, income.sales, []);
+    diffAndSync(client.models.PartnerIncome as any, income.partner, []);
+    setIncome(prev => ({ ...prev, sales: [], partner: [] }));
+  };
+  const seedIncomeSample = () => {
+    const sample = seedIncome(db, products);
+    diffAndSync(client.models.Sale as any, income.sales, sample.sales);
+    diffAndSync(client.models.PartnerIncome as any, income.partner, sample.partner);
+    setIncome(sample);
   };
 
   const go = (id: ScreenId) => { setScreen(id); setMobileNavOpen(false); };
@@ -165,7 +172,7 @@ export function DashboardApp() {
           {screen === "income" && <IncomeScreen db={db} products={products} income={income} setIncome={updateIncome} />}
           {screen === "agents" && <AgentsScreen db={db} income={income} commit={commit} />}
           {screen === "ai" && <AIScreen db={db} income={income} />}
-          {screen === "data" && <DataScreen db={db} income={income} commit={commit} resetSeed={resetSeed} resetEmpty={resetEmpty} />}
+          {screen === "data" && <DataScreen db={db} income={income} commit={commit} resetSeed={() => resetSeed(seedIncomeSample)} resetEmpty={() => resetEmpty(clearIncome)} />}
         </div>
       </main>
     </div>
