@@ -64,6 +64,8 @@ export interface FollowUp {
   note: string;
   agent: string;
   completedAt?: string;
+  contactCount?: number;
+  lastContactedAt?: string;
 }
 
 export interface Feedback {

@@ -1,12 +1,12 @@
 import { Clock, Mail, MapPin, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
-import { dayDiff, initials, isFresh, shortDate, STAGES, STAGE_TITLES } from "../data";
+import { dayDiff, initials, isFresh, shortDate, STAGES, STAGE_TITLES, today, uid } from "../data";
 import { blankRecord } from "../forms";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
-import { BoardCardHeader, BoardHint, BoardToggle, CardRow, KanbanBoard, type BoardColumn } from "../Board";
+import { BoardCardHeader, BoardHint, BoardToggle, CardPillButton, CardRow, KanbanBoard, type BoardColumn } from "../Board";
 import { DBtn, DCard, DInput } from "../ui";
-import type { Db, Prospect, Stage } from "../types";
+import type { Db, FollowUp, Prospect, Stage } from "../types";
 
 const DOTS: Record<Stage, string> = {
   NEW: "#3f7fe0",
@@ -68,6 +68,10 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
   const moveStage = (rec: Prospect, stage: Stage) => {
     const finalRec = applyCompletion({ ...rec, stage }, rec.stage);
     commit({ ...db, prospects: db.prospects.map(p => (p.id === rec.id ? finalRec : p)) }, rec.name + " → " + STAGE_TITLES[stage]);
+  };
+  const addFollowUp = (p: Prospect) => {
+    const fu: FollowUp = { id: uid(), prospectId: p.id, subject: p.name, type: "Call", dueDate: today(), status: "Open", note: "", agent: p.agent, contactCount: 0 };
+    commit({ ...db, followUps: [fu, ...db.followUps] }, p.name + " added to Follow-Ups");
   };
   const convert = (rec: Prospect, type: "Client" | "Partner" | "Both") => {
     const exists = db.clients.find(c => c.name.trim().toLowerCase() === rec.name.trim().toLowerCase());
@@ -136,6 +140,7 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
                 {p.need && <CardRow icon={<TrendingUp size={14} />}>Interested in {p.need}</CardRow>}
                 {fus.length > 0 && <CardRow icon={<Clock size={14} />}>{fus.length} scheduled, {done > 0 ? done + " done" : "none done yet"}</CardRow>}
                 {p.email && <CardRow icon={<Mail size={14} />}>{p.email}</CardRow>}
+                <CardPillButton onClick={() => addFollowUp(p)}>+ Follow-up</CardPillButton>
               </>
             );
           }}
@@ -167,6 +172,7 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
                 Advance to {STAGE_TITLES[STAGES[Math.min(STAGES.indexOf(selected.stage) + 1, 4)]]}
               </DBtn>
             )}
+            <DBtn variant="secondary" onClick={() => addFollowUp(selected)}>Add to Follow-Ups</DBtn>
             <DBtn variant="secondary" onClick={() => convert(selected, "Client")}>Convert to Client</DBtn>
             <DBtn variant="secondary" onClick={() => convert(selected, "Partner")}>Convert to Partner</DBtn>
             <DBtn variant="secondary" onClick={() => setModal(selected)}>Edit record</DBtn>

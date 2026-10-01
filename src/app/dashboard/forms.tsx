@@ -44,6 +44,7 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
     { k: "dueDate", l: "Due date", t: "date" },
     { k: "status", l: "Status", t: "select", options: ["Open", "Completed"] },
     { k: "prospectId", l: "Linked prospect", t: "select", from: "prospects", optional: true },
+    { k: "contactCount", l: "Times contacted", t: "number", optional: true },
     { k: "note", l: "Note", t: "area", span2: true },
   ],
   clients: [

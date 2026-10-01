@@ -1,10 +1,10 @@
-import { FileText, Tag, User } from "lucide-react";
+import { FileText, Phone, Tag, User } from "lucide-react";
 import { useMemo, useState } from "react";
 import { dayDiff, initials, isFresh, shortDate } from "../data";
 import { blankRecord } from "../forms";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
-import { BoardCardHeader, BoardHint, BoardToggle, CardRow, KanbanBoard, MiniBadge, type BoardColumn } from "../Board";
+import { BoardCardHeader, BoardHint, BoardToggle, CardPillButton, CardRow, KanbanBoard, MiniBadge, type BoardColumn } from "../Board";
 import { DBtn } from "../ui";
 import type { Db, FollowUp } from "../types";
 
@@ -42,6 +42,13 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
     { key: "note", label: "Note", render: r => <span className="text-[#667085]">{r.note}</span> },
     { key: "agent", label: "Agent", render: r => r.agent },
     {
+      key: "contacts", label: "Contacts", render: r => (
+        <button onClick={() => logContact(r)} className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#1c3a5e] hover:underline" title="Log a contact">
+          {r.contactCount ?? 0}× <span className="text-[11px] text-[#98a2b3] font-normal">+1</span>
+        </button>
+      ), sortValue: r => r.contactCount ?? 0,
+    },
+    {
       key: "status", label: "Status", render: r => (
         <button onClick={() => {
           const finalRec = applyCompletion({ ...r, status: r.status === "Open" ? "Completed" : "Open" }, r.status);
@@ -69,6 +76,10 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
   const moveStatus = (rec: FollowUp, status: FollowUp["status"]) => {
     const finalRec = applyCompletion({ ...rec, status }, rec.status);
     commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? finalRec : f)) }, rec.subject + " → " + status);
+  };
+  const logContact = (rec: FollowUp) => {
+    const updated = { ...rec, contactCount: (rec.contactCount ?? 0) + 1, lastContactedAt: new Date().toISOString() };
+    commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? updated : f)) }, "Logged contact with " + rec.subject);
   };
 
   const boardRows = useMemo(() => sorted.filter(r => r.status !== "Completed" || isFresh(r.completedAt)), [sorted]);
@@ -124,6 +135,11 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
                 <CardRow icon={<Tag size={14} />}>{r.type}</CardRow>
                 <CardRow icon={<FileText size={14} />}>{r.note}</CardRow>
                 <CardRow icon={<User size={14} />}>{r.agent}</CardRow>
+                <CardRow icon={<Phone size={14} />}>
+                  {r.contactCount ?? 0} contact{(r.contactCount ?? 0) === 1 ? "" : "s"}
+                  {r.lastContactedAt ? " · last " + shortDate(r.lastContactedAt.slice(0, 10)) : ""}
+                </CardRow>
+                <CardPillButton onClick={() => logContact(r)}>Log contact</CardPillButton>
               </>
             );
           }}
