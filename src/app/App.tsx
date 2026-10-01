@@ -7,6 +7,7 @@ import {
   useNavigate,
   useLocation,
   Navigate,
+  Link,
 } from "react-router";
 import {
   ArrowRight,
@@ -38,6 +39,9 @@ import {
   LifeInsurancePage,
   ContactPage,
 } from "./pages";
+import { DashboardApp } from "./dashboard/DashboardApp";
+import { AuthGate } from "./dashboard/AuthGate";
+import { EventRsvpPage } from "./dashboard/EventRsvpPage";
 
 const pageToPath: Record<Page, string> = {
   home: "/",
@@ -197,7 +201,10 @@ function Footer({ navigate }: { navigate: (p: Page) => void }) {
           </div>
         </div>
         <div className="border-t border-[#e5e5e5] pt-6 flex flex-col md:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-[#a3a3a3]">© {new Date().getFullYear()} CoreMentra. All rights reserved.</p>
+          <div className="flex items-center gap-5">
+            <p className="text-xs text-[#a3a3a3]">© {new Date().getFullYear()} CoreMentra. All rights reserved.</p>
+            <Link to="/dashboard" className="text-xs text-[#a3a3a3] hover:text-[#0a0a0a] transition-colors uppercase tracking-widest">Admin</Link>
+          </div>
           <button className="text-xs text-[#a3a3a3] hover:text-[#0a0a0a] transition-colors uppercase tracking-widest">Privacy Policy</button>
         </div>
         <p className="text-xs text-[#c4c4c4] mt-5 leading-relaxed">
@@ -247,7 +254,11 @@ function Layout() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Layout />
+      <Routes>
+        <Route path="/dashboard/*" element={<AuthGate><DashboardApp /></AuthGate>} />
+        <Route path="/events/:eventId" element={<EventRsvpPage />} />
+        <Route path="/*" element={<Layout />} />
+      </Routes>
     </BrowserRouter>
   );
 }
