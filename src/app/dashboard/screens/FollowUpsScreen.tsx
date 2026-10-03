@@ -13,6 +13,8 @@ const COLUMNS: BoardColumn<FollowUp["status"]>[] = [
   { key: "Completed", label: "Completed", dot: "#8b5cf0" },
 ];
 
+const FOLLOWUP_TYPES: FollowUp["type"][] = ["Call", "Email", "Appointment", "Task"];
+
 function whenLabel(r: FollowUp) {
   const d = dayDiff(r.dueDate);
   return r.status === "Completed" ? "done" : d < 0 ? Math.abs(d) + "d overdue" : d === 0 ? "today" : "in " + d + "d";
@@ -21,7 +23,7 @@ function whenLabel(r: FollowUp) {
 export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: string) => void }) {
   const [view, setView] = useState<"board" | "table">("board");
   const [modal, setModal] = useState<FollowUp | null>(null);
-  const [undo, setUndo] = useState<{ id: string; subject: string; prevDueDate: string } | null>(null);
+  const [undo, setUndo] = useState<{ id: string; subject: string; prevDueDate: string; prevType: FollowUp["type"]; movedOut: boolean } | null>(null);
   const undoTimer = useRef<number | null>(null);
   const todayStr = today();
 
@@ -56,12 +58,21 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
     },
     {
       key: "nextContact", label: "Next contact", render: r => (
-        <input
-          type="date"
-          value={r.dueDate}
-          onChange={e => reschedule(r, e.target.value)}
-          className="h-8 px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
-        />
+        <div className="flex items-center gap-1.5">
+          <select
+            value={r.type}
+            onChange={e => reschedule(r, { type: e.target.value as FollowUp["type"] })}
+            className="h-8 px-1.5 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+          >
+            {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <input
+            type="date"
+            value={r.dueDate}
+            onChange={e => reschedule(r, { dueDate: e.target.value })}
+            className="h-8 px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+          />
+        </div>
       ),
     },
     {
@@ -97,20 +108,25 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
     const updated = { ...rec, contactCount: (rec.contactCount ?? 0) + 1, lastContactedAt: new Date().toISOString() };
     commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? updated : f)) }, "Logged contact with " + rec.subject);
   };
-  // Moves the follow-up's due date forward. A future date takes it out of
-  // the Open board (see boardRows below) — it only reappears there once
-  // that date arrives, and shows up on the Calendar in the meantime.
-  const reschedule = (rec: FollowUp, dueDate: string) => {
-    if (!dueDate || dueDate === rec.dueDate) return;
+  // Moves the follow-up's due date (and optionally what kind of contact it
+  // is — call vs meeting, etc.) forward. A future date takes it out of the
+  // Open board (see boardRows below) — it only reappears there once that
+  // date arrives, and shows up on the Calendar/home Due list meanwhile.
+  const reschedule = (rec: FollowUp, next: { dueDate?: string; type?: FollowUp["type"] }) => {
+    const dueDate = next.dueDate ?? rec.dueDate;
+    const type = next.type ?? rec.type;
+    if (!dueDate || (dueDate === rec.dueDate && type === rec.type)) return;
     const prevDueDate = rec.dueDate;
-    commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? { ...f, dueDate } : f)) }, "Next contact for " + rec.subject + " set to " + shortDate(dueDate));
+    const prevType = rec.type;
+    const movedOut = rec.status === "Open" && dueDate > todayStr;
+    commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? { ...f, dueDate, type } : f)) }, "Next contact for " + rec.subject + " set to " + shortDate(dueDate) + " (" + type + ")");
     if (undoTimer.current) window.clearTimeout(undoTimer.current);
-    setUndo({ id: rec.id, subject: rec.subject, prevDueDate });
+    setUndo({ id: rec.id, subject: rec.subject, prevDueDate, prevType, movedOut });
     undoTimer.current = window.setTimeout(() => setUndo(null), 5000);
   };
   const undoReschedule = () => {
     if (!undo) return;
-    commit({ ...db, followUps: db.followUps.map(f => (f.id === undo.id ? { ...f, dueDate: undo.prevDueDate } : f)) }, "Undid reschedule for " + undo.subject);
+    commit({ ...db, followUps: db.followUps.map(f => (f.id === undo.id ? { ...f, dueDate: undo.prevDueDate, type: undo.prevType } : f)) }, "Undid reschedule for " + undo.subject);
     if (undoTimer.current) window.clearTimeout(undoTimer.current);
     setUndo(null);
   };
@@ -187,10 +203,17 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
                 <CardPillButton onClick={() => logContact(r)}>Log contact</CardPillButton>
                 <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 mt-0.5">
                   <label className="text-[11px] text-[#98a2b3] font-semibold shrink-0">Next contact</label>
+                  <select
+                    value={r.type}
+                    onChange={e => reschedule(r, { type: e.target.value as FollowUp["type"] })}
+                    className="h-8 px-1.5 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+                  >
+                    {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
                   <input
                     type="date"
                     value={r.dueDate}
-                    onChange={e => reschedule(r, e.target.value)}
+                    onChange={e => reschedule(r, { dueDate: e.target.value })}
                     className="h-8 px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3] flex-1 min-w-0"
                   />
                 </div>
@@ -204,7 +227,7 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
 
       {undo && (
         <div className="fixed bottom-6 right-6 z-[110] flex items-center gap-3 bg-[#0a0a0a] text-white text-[13px] rounded-xl pl-4 pr-3 py-3 shadow-2xl">
-          <span>Moved <strong>{undo.subject}</strong> out of Open</span>
+          <span>{undo.movedOut ? <>Moved <strong>{undo.subject}</strong> out of Open</> : <>Updated next contact for <strong>{undo.subject}</strong></>}</span>
           <button onClick={undoReschedule} className="font-semibold text-[#8fc1ff] hover:text-white underline underline-offset-2 shrink-0">Undo</button>
         </div>
       )}

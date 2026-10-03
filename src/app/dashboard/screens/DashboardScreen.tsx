@@ -85,9 +85,12 @@ export function DashboardScreen({ db, income, goFollowUps }: { db: Db; income: I
               const d = dayDiff(f.dueDate);
               const label = d < 0 ? Math.abs(d) + "d late" : d === 0 ? "today" : "in " + d + "d";
               return (
-                <div key={f.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-[#fafbfc]">
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${d < 0 ? "bg-[#faeceb] text-[#a4372f]" : d === 0 ? "bg-[#eaf1f9] text-[#141a20]" : "bg-[#f2f4f7] text-[#475467]"}`}>{label}</span>
-                  <span className="text-sm text-[#344054] flex-1 truncate">{f.subject} — {f.type}</span>
+                <div key={f.id} className="flex items-start gap-2.5 px-2.5 py-2 rounded-lg bg-[#fafbfc]">
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 mt-0.5 ${d < 0 ? "bg-[#faeceb] text-[#a4372f]" : d === 0 ? "bg-[#eaf1f9] text-[#141a20]" : "bg-[#f2f4f7] text-[#475467]"}`}>{label}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-[#344054] truncate">{f.subject} — {f.type}</div>
+                    {f.note && <div className="text-xs text-[#98a2b3] truncate">{f.note}</div>}
+                  </div>
                 </div>
               );
             })}
