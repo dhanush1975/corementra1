@@ -85,6 +85,8 @@ const schema = a.schema({
     note: a.string(),
     agent: a.string(),
     completedAt: a.string(),
+    contactCount: a.integer(),
+    lastContactedAt: a.string(),
   }).authorization(allow => [allow.authenticated()]),
 
   Feedback: a.model({

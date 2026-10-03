@@ -32,13 +32,22 @@ export function diffAndSync<T extends { id: string }>(
   const nextMap = new Map(nextList.map(r => [r.id, r]));
   const ops: Promise<any>[] = [];
 
+  // The generated client resolves (doesn't throw) on a GraphQL validation
+  // error — it just returns { data: null, errors: [...] } — so without this,
+  // Promise.allSettled sees every failed write as "fulfilled" and the
+  // onError warning below never fires, silently dropping the change.
+  const guarded = (p: Promise<any>) => p.then(res => {
+    if (res?.errors?.length) throw new Error(res.errors.map((e: any) => e.message).join("; "));
+    return res;
+  });
+
   for (const [id, rec] of nextMap) {
     const prevRec = prevMap.get(id);
-    if (!prevRec) ops.push(model.create(rec));
-    else if (JSON.stringify(prevRec) !== JSON.stringify(rec)) ops.push(model.update(rec));
+    if (!prevRec) ops.push(guarded(model.create(rec)));
+    else if (JSON.stringify(prevRec) !== JSON.stringify(rec)) ops.push(guarded(model.update(rec)));
   }
   for (const id of prevMap.keys()) {
-    if (!nextMap.has(id)) ops.push(model.delete({ id }));
+    if (!nextMap.has(id)) ops.push(guarded(model.delete({ id })));
   }
 
   if (!ops.length) return;
