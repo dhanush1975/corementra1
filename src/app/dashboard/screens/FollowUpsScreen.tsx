@@ -1,6 +1,6 @@
 import { FileText, Phone, PhoneCall, Tag, User } from "lucide-react";
-import { useMemo, useState } from "react";
-import { dayDiff, initials, isFresh, shortDate } from "../data";
+import { useMemo, useRef, useState } from "react";
+import { dayDiff, initials, isFresh, shortDate, today } from "../data";
 import { blankRecord } from "../forms";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
@@ -21,6 +21,9 @@ function whenLabel(r: FollowUp) {
 export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: string) => void }) {
   const [view, setView] = useState<"board" | "table">("board");
   const [modal, setModal] = useState<FollowUp | null>(null);
+  const [undo, setUndo] = useState<{ id: string; subject: string; prevDueDate: string } | null>(null);
+  const undoTimer = useRef<number | null>(null);
+  const todayStr = today();
 
   const phoneOf = (prospectId: string) => db.prospects.find(p => p.id === prospectId)?.phone || "";
 
@@ -94,15 +97,32 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
     const updated = { ...rec, contactCount: (rec.contactCount ?? 0) + 1, lastContactedAt: new Date().toISOString() };
     commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? updated : f)) }, "Logged contact with " + rec.subject);
   };
-  // Moves the follow-up's due date forward — it drops off today's list
-  // (Calendar, "overdue"/"today" sorting) and reappears on the new date.
+  // Moves the follow-up's due date forward. A future date takes it out of
+  // the Open board (see boardRows below) — it only reappears there once
+  // that date arrives, and shows up on the Calendar in the meantime.
   const reschedule = (rec: FollowUp, dueDate: string) => {
-    if (!dueDate) return;
+    if (!dueDate || dueDate === rec.dueDate) return;
+    const prevDueDate = rec.dueDate;
     commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? { ...f, dueDate } : f)) }, "Next contact for " + rec.subject + " set to " + shortDate(dueDate));
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    setUndo({ id: rec.id, subject: rec.subject, prevDueDate });
+    undoTimer.current = window.setTimeout(() => setUndo(null), 5000);
+  };
+  const undoReschedule = () => {
+    if (!undo) return;
+    commit({ ...db, followUps: db.followUps.map(f => (f.id === undo.id ? { ...f, dueDate: undo.prevDueDate } : f)) }, "Undid reschedule for " + undo.subject);
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    setUndo(null);
   };
 
-  const boardRows = useMemo(() => sorted.filter(r => r.status !== "Completed" || isFresh(r.completedAt)), [sorted]);
-  const hiddenCount = sorted.length - boardRows.length;
+  // Open items only belong on the board once they're actually due — a
+  // future "next contact" date moves them out until that day arrives.
+  const boardRows = useMemo(
+    () => sorted.filter(r => (r.status === "Completed" ? isFresh(r.completedAt) : r.dueDate <= todayStr)),
+    [sorted, todayStr],
+  );
+  const completedHiddenCount = sorted.filter(r => r.status === "Completed" && !isFresh(r.completedAt)).length;
+  const scheduledHiddenCount = sorted.filter(r => r.status === "Open" && r.dueDate > todayStr).length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -120,10 +140,15 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
         {view === "board" && <BoardHint />}
       </div>
 
-      {view === "board" && hiddenCount > 0 && (
+      {view === "board" && completedHiddenCount > 0 && (
         <p className="text-xs text-[#98a2b3] -mt-2">
-          {hiddenCount} completed more than a day ago —{" "}
+          {completedHiddenCount} completed more than a day ago —{" "}
           <button onClick={() => setView("table")} className="underline hover:text-[#667085]">see them in Table</button>.
+        </p>
+      )}
+      {view === "board" && scheduledHiddenCount > 0 && (
+        <p className="text-xs text-[#98a2b3] -mt-2">
+          {scheduledHiddenCount} scheduled for a later day — see them on the Calendar.
         </p>
       )}
 
@@ -176,6 +201,13 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
       )}
 
       {modal && <RecordModal entityKey="followUps" record={modal} db={db} agents={db.agents} onSave={save} onDelete={() => del(modal)} onClose={() => setModal(null)} />}
+
+      {undo && (
+        <div className="fixed bottom-6 right-6 z-[110] flex items-center gap-3 bg-[#0a0a0a] text-white text-[13px] rounded-xl pl-4 pr-3 py-3 shadow-2xl">
+          <span>Moved <strong>{undo.subject}</strong> out of Open</span>
+          <button onClick={undoReschedule} className="font-semibold text-[#8fc1ff] hover:text-white underline underline-offset-2 shrink-0">Undo</button>
+        </div>
+      )}
     </div>
   );
 }
