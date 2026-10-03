@@ -181,12 +181,15 @@ export function EventRsvpPage() {
         (window as any).Calendly.initInlineWidget({
           url: CALENDLY_URL,
           parentElement: calendlyRef.current,
-          prefill: { name, email },
+          // a1 maps to the event type's first custom question — the
+          // "anything that will help prepare for our meeting" notes field —
+          // so the phone number lands there instead of being lost.
+          prefill: { name, email, customAnswers: { a1: "Phone: " + phone } },
         });
       })
       .catch(err => !cancelled && setCalendlyError(err.message || String(err)));
     return () => { cancelled = true; };
-  }, [status, name, email]);
+  }, [status, name, email, phone]);
 
   // The only trigger that actually creates the Prospect record: Calendly
   // posts this message to the parent window the moment a real time slot
@@ -254,8 +257,8 @@ export function EventRsvpPage() {
                   <input className="erp-input" id="f-email" type="email" required placeholder="e.g. jane.doe@company.com" value={email} onChange={e => setEmail(e.target.value)} />
                 </div>
                 <div className="erp-field">
-                  <label htmlFor="f-phone">Phone Number</label>
-                  <input className="erp-input" id="f-phone" type="tel" placeholder="e.g. +1 555 000 0000" value={phone} onChange={e => setPhone(e.target.value)} />
+                  <label htmlFor="f-phone">Phone Number<span className="erp-req">*</span></label>
+                  <input className="erp-input" id="f-phone" type="tel" required placeholder="e.g. +1 555 000 0000" value={phone} onChange={e => setPhone(e.target.value)} />
                 </div>
                 <div className="erp-field">
                   <label htmlFor="f-interest">Interested In</label>
