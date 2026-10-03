@@ -5,7 +5,7 @@ import { blankRecord } from "../forms";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
 import { BoardCardHeader, BoardHint, BoardToggle, CardRow, KanbanBoard, MiniBadge, type BoardColumn } from "../Board";
-import { DBtn } from "../ui";
+import { DBtn, DCard } from "../ui";
 import type { Client, ClientType, Db, IncomeData } from "../types";
 
 const COLUMNS: BoardColumn<ClientType>[] = [
@@ -19,6 +19,7 @@ const BADGE_TONE: Record<ClientType, "blue" | "purple" | "amber"> = { Client: "b
 export function ClientsScreen({ db, income, commit }: { db: Db; income: IncomeData; commit: (db: Db, msg?: string) => void }) {
   const [view, setView] = useState<"board" | "table">("board");
   const [modal, setModal] = useState<Client | null>(null);
+  const [selected, setSelected] = useState<Client | null>(null);
   const [typeFilter, setTypeFilter] = useState("All");
 
   const rows = typeFilter === "All" ? db.clients : db.clients.filter(c => c.type === typeFilter);
@@ -43,11 +44,17 @@ export function ClientsScreen({ db, income, commit }: { db: Db; income: IncomeDa
   };
   const del = (rec: Client) => {
     if (!window.confirm("Delete this record?")) return;
+    setSelected(null);
     commit({ ...db, clients: db.clients.filter(r => r.id !== rec.id) }, "Record deleted");
   };
   const moveType = (rec: Client, type: ClientType) => {
     commit({ ...db, clients: db.clients.map(c => (c.id === rec.id ? { ...c, type } : c)) }, rec.name + " → " + type);
   };
+
+  // Multiple Sale records can already exist for the same client (one per
+  // purchase, over however many months apart) — this is just what makes
+  // that history visible instead of only an aggregate total.
+  const salesFor = (clientId: string) => income.sales.filter(s => s.clientId === clientId).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div className="flex flex-col gap-4">
@@ -81,7 +88,7 @@ export function ClientsScreen({ db, income, commit }: { db: Db; income: IncomeDa
           getColumn={r => r.type}
           onMove={moveType}
           onAdd={type => setModal({ ...blankRecord("clients"), type })}
-          onOpen={setModal}
+          onOpen={setSelected}
           countNoun="RECORD"
           renderCard={(r, col) => (
             <>
@@ -100,6 +107,48 @@ export function ClientsScreen({ db, income, commit }: { db: Db; income: IncomeDa
             </>
           )}
         />
+      )}
+
+      {selected && (
+        <DCard className="p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-[#98a2b3]">Client record</div>
+            <h3 className="text-lg font-bold mt-1">{selected.name}</h3>
+            <div className="text-[13px] leading-7 mt-2">
+              <div>{selected.email}</div>
+              <div>{selected.phone}</div>
+              <div>Type · {selected.type}</div>
+              <div>Agent · {selected.agent}</div>
+              <div>Client since · {shortDate(selected.since)}</div>
+            </div>
+          </div>
+          <div>
+            <h5 className="text-xs uppercase tracking-wider text-[#98a2b3] mb-1.5">Purchase history</h5>
+            {salesFor(selected.id).length ? (
+              <div className="flex flex-col gap-1.5">
+                {salesFor(selected.id).map((s, i) => (
+                  <div key={s.id} className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-[#fafbfc] text-[13px]">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">Product {salesFor(selected.id).length - i} · {s.productLabel}</div>
+                      <div className="text-[11px] text-[#98a2b3]">{shortDate(s.date)}</div>
+                    </div>
+                    <div className="text-right shrink-0 flex items-center gap-2">
+                      <span className="font-semibold">{money(s.premium)}</span>
+                      <TagPill text={s.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[13px] text-[#98a2b3]">No purchases logged yet — add one from the Income screen.</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <DBtn variant="secondary" onClick={() => setModal(selected)}>Edit record</DBtn>
+            <DBtn variant="danger" onClick={() => del(selected)}>Delete contact</DBtn>
+            <DBtn variant="ghost" onClick={() => setSelected(null)}>Close</DBtn>
+          </div>
+        </DCard>
       )}
 
       {modal && <RecordModal entityKey="clients" record={modal} db={db} agents={db.agents} onSave={save} onDelete={() => del(modal)} onClose={() => setModal(null)} />}
