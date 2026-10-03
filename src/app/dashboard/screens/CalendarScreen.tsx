@@ -1,34 +1,11 @@
 import { useMemo, useState } from "react";
-import { shortDate, shortTime, today } from "../data";
+import { monthGrid, shortDate, shortTime, today } from "../data";
 import { blankRecord } from "../forms";
 import { RecordModal } from "../RecordModal";
 import { DBtn, DCard, EmptyState, Pill } from "../ui";
 import type { Db, FollowUp } from "../types";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const pad = (n: number) => String(n).padStart(2, "0");
-const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-// Always 42 cells (6 full weeks) so the grid height never jumps between months.
-function monthGrid(year: number, month: number) {
-  const first = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: { date: Date; dateStr: string; inMonth: boolean }[] = [];
-  for (let i = first.getDay(); i > 0; i--) {
-    const d = new Date(year, month, 1 - i);
-    cells.push({ date: d, dateStr: toDateStr(d), inMonth: false });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dt = new Date(year, month, d);
-    cells.push({ date: dt, dateStr: toDateStr(dt), inMonth: true });
-  }
-  while (cells.length < 42) {
-    const last = cells[cells.length - 1].date;
-    const d = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
-    cells.push({ date: d, dateStr: toDateStr(d), inMonth: false });
-  }
-  return cells;
-}
 
 export function CalendarScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: string) => void }) {
   const todayStr = today();

@@ -40,6 +40,31 @@ export const shortTime = (t?: string) => {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 };
 export const dayDiff = (d: string) => Math.round((new Date(d + "T00:00:00").getTime() - new Date(today() + "T00:00:00").getTime()) / 86400000);
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+export const toDateStr = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// Always 42 cells (6 full weeks) so the grid height never jumps between
+// months. Shared by the Calendar screen and the DateTimePicker popover.
+export function monthGrid(year: number, month: number) {
+  const first = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: { date: Date; dateStr: string; inMonth: boolean }[] = [];
+  for (let i = first.getDay(); i > 0; i--) {
+    const d = new Date(year, month, 1 - i);
+    cells.push({ date: d, dateStr: toDateStr(d), inMonth: false });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(year, month, d);
+    cells.push({ date: dt, dateStr: toDateStr(dt), inMonth: true });
+  }
+  while (cells.length < 42) {
+    const last = cells[cells.length - 1].date;
+    const d = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
+    cells.push({ date: d, dateStr: toDateStr(d), inMonth: false });
+  }
+  return cells;
+}
 export const initials = (n?: string) => String(n || "").split(" ").filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("");
 export const plainVal = (v: string | undefined) => (["Not captured yet", "Not decided yet", "", undefined].includes(v) ? "" : v);
 

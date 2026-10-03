@@ -2,6 +2,7 @@ import { FileText, Phone, PhoneCall, Tag, User } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { dayDiff, initials, isFresh, shortDate, shortTime, today } from "../data";
 import { blankRecord } from "../forms";
+import { DateTimePicker } from "../DateTimePicker";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
 import { BoardCardHeader, BoardHint, BoardToggle, CardPillButton, CardRow, KanbanBoard, MiniBadge, type BoardColumn } from "../Board";
@@ -14,16 +15,6 @@ const COLUMNS: BoardColumn<FollowUp["status"]>[] = [
 ];
 
 const FOLLOWUP_TYPES: FollowUp["type"][] = ["Call", "Email", "Appointment", "Task"];
-
-// A plain <input type="date"> is what was glitching (its native
-// up/down-arrow step action snapping back to today in some browsers) —
-// datetime-local is a different native control and doubles as the time
-// picker, so one fix covers both complaints.
-const toDatetimeLocal = (date: string, time?: string) => (date ? `${date}T${time || "00:00"}` : "");
-const fromDatetimeLocal = (value: string): { dueDate: string; dueTime: string } => {
-  const [dueDate, dueTime] = value.split("T");
-  return { dueDate: dueDate || "", dueTime: dueTime || "" };
-};
 
 function whenLabel(r: FollowUp) {
   const d = dayDiff(r.dueDate);
@@ -70,20 +61,15 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
     },
     {
       key: "nextContact", label: "Next contact", render: r => (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 w-[220px]">
           <select
             value={r.type}
             onChange={e => reschedule(r, { type: e.target.value as FollowUp["type"] })}
-            className="h-8 px-1.5 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+            className="h-8 px-1.5 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3] shrink-0 w-[92px]"
           >
             {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <input
-            type="datetime-local"
-            value={toDatetimeLocal(r.dueDate, r.dueTime)}
-            onChange={e => reschedule(r, fromDatetimeLocal(e.target.value))}
-            className="h-8 px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
-          />
+          <DateTimePicker date={r.dueDate} time={r.dueTime} onApply={(dueDate, dueTime) => reschedule(r, { dueDate, dueTime })} />
         </div>
       ),
     },
@@ -226,12 +212,7 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
                   >
                     {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
-                  <input
-                    type="datetime-local"
-                    value={toDatetimeLocal(r.dueDate, r.dueTime)}
-                    onChange={e => reschedule(r, fromDatetimeLocal(e.target.value))}
-                    className="h-8 w-full px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
-                  />
+                  <DateTimePicker date={r.dueDate} time={r.dueTime} onApply={(dueDate, dueTime) => reschedule(r, { dueDate, dueTime })} />
                 </div>
               </>
             );
