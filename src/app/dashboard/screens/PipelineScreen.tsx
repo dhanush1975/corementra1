@@ -19,6 +19,10 @@ const DOTS: Record<Stage, string> = {
 
 const COLUMNS: BoardColumn<Stage>[] = STAGES.map(s => ({ key: s, label: STAGE_TITLES[s], dot: DOTS[s] }));
 
+// Converting too early (straight from New/Contacted) skips the funnel —
+// only offer it once someone's actually worked through to In Process.
+const CONVERTIBLE_STAGES: Stage[] = ["IN PROCESS", "CONVERTED"];
+
 export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: string) => void }) {
   const [view, setView] = useState<"board" | "table">("board");
   const [query, setQuery] = useState("");
@@ -173,8 +177,12 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
               </DBtn>
             )}
             <DBtn variant="secondary" onClick={() => addFollowUp(selected)}>Add to Follow-Ups</DBtn>
-            <DBtn variant="secondary" onClick={() => convert(selected, "Client")}>Convert to Client</DBtn>
-            <DBtn variant="secondary" onClick={() => convert(selected, "Partner")}>Convert to Partner</DBtn>
+            {CONVERTIBLE_STAGES.includes(selected.stage) && (
+              <>
+                <DBtn variant="secondary" onClick={() => convert(selected, "Client")}>Convert to Client</DBtn>
+                <DBtn variant="secondary" onClick={() => convert(selected, "Partner")}>Convert to Partner</DBtn>
+              </>
+            )}
             <DBtn variant="secondary" onClick={() => setModal(selected)}>Edit record</DBtn>
             <DBtn variant="danger" onClick={() => del(selected)}>Delete contact</DBtn>
             <DBtn variant="ghost" onClick={() => setSelected(null)}>Close</DBtn>
