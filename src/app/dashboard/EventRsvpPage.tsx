@@ -1,13 +1,37 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import logo from "@/imports/logo/corementra-logo-trimmed.png";
 import { client } from "./client";
 import { today, uid } from "./data";
 import type { EventRecord } from "./types";
 
-type Status = "loading" | "notFound" | "loadError" | "form" | "submitting" | "done" | "error";
+type Status = "loading" | "notFound" | "loadError" | "form" | "schedule" | "submitting" | "done" | "error";
 
 const INTERESTS = ["Wealth management", "Investment advisory", "Business financing", "Tax & planning", "Something else"];
+
+const CALENDLY_URL = "https://calendly.com/amit-arakeswara/amit-arakeswara-s-calendar";
+
+// Loaded once and cached — Calendly's inline widget needs its own script/css
+// from their CDN; initInlineWidget() is what actually renders a picker into
+// a given container, called fresh each time we enter the "schedule" step.
+let calendlyScriptPromise: Promise<void> | null = null;
+function loadCalendlyScript(): Promise<void> {
+  if ((window as any).Calendly) return Promise.resolve();
+  if (calendlyScriptPromise) return calendlyScriptPromise;
+  calendlyScriptPromise = new Promise((resolve, reject) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://assets.calendly.com/assets/external/widget.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = "https://assets.calendly.com/assets/external/widget.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Could not load the scheduler — please refresh and try again."));
+    document.body.appendChild(script);
+  });
+  return calendlyScriptPromise;
+}
 
 const STYLES = `
   .erp-page { min-height: 100vh; display: flex; flex-direction: column; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #15151f;
@@ -66,6 +90,8 @@ export function EventRsvpPage() {
   const [notes, setNotes] = useState("");
 
   const [loadErrorDetail, setLoadErrorDetail] = useState("");
+  const [calendlyError, setCalendlyError] = useState("");
+  const calendlyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!eventId) { setStatus("notFound"); return; }
@@ -104,8 +130,17 @@ export function EventRsvpPage() {
     return () => window.clearTimeout(t);
   }, [status]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Details are only collected here — nothing is written to the database
+  // until Calendly confirms an actual booking (see the message listener
+  // below), so a visitor who fills the form but never picks a time never
+  // becomes a lead.
+  const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setCalendlyError("");
+    setStatus("schedule");
+  };
+
+  const submitProspect = async () => {
     if (!eventId) return;
     setStatus("submitting");
     try {
@@ -134,6 +169,40 @@ export function EventRsvpPage() {
     }
   };
 
+  // Render the Calendly picker, prefilled with what they just entered, once
+  // the "schedule" step is reached.
+  useEffect(() => {
+    if (status !== "schedule") return;
+    let cancelled = false;
+    loadCalendlyScript()
+      .then(() => {
+        if (cancelled || !calendlyRef.current) return;
+        calendlyRef.current.innerHTML = "";
+        (window as any).Calendly.initInlineWidget({
+          url: CALENDLY_URL,
+          parentElement: calendlyRef.current,
+          prefill: { name, email },
+        });
+      })
+      .catch(err => !cancelled && setCalendlyError(err.message || String(err)));
+    return () => { cancelled = true; };
+  }, [status, name, email]);
+
+  // The only trigger that actually creates the Prospect record: Calendly
+  // posts this message to the parent window the moment a real time slot
+  // is booked, not when the widget merely opens or a date is picked.
+  useEffect(() => {
+    if (status !== "schedule") return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin.includes("calendly.com") && e.data?.event === "calendly.event_scheduled") {
+        submitProspect();
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
   const firstName = name.trim().split(" ")[0] || "there";
 
   return (
@@ -147,7 +216,7 @@ export function EventRsvpPage() {
           </a>
         </header>
 
-        <main className="erp-main">
+        <main className="erp-main" style={status === "schedule" || status === "submitting" || status === "error" ? { maxWidth: 900 } : undefined}>
           {status === "loading" && <p>Loading…</p>}
 
           {status === "notFound" && (
@@ -167,7 +236,7 @@ export function EventRsvpPage() {
             </div>
           )}
 
-          {(status === "form" || status === "submitting" || status === "error") && (
+          {status === "form" && (
             <>
               <div className="erp-hero">
                 <span className="erp-pill">Meet CoreMentra{event ? ` at ${event.name}` : " at the Event"}</span>
@@ -175,7 +244,7 @@ export function EventRsvpPage() {
                 <p className="erp-lead">Great to meet you here</p>
               </div>
 
-              <form onSubmit={handleSubmit} className="erp-card">
+              <form onSubmit={handleDetailsSubmit} className="erp-card">
                 <div className="erp-field">
                   <label htmlFor="f-name">Full Name<span className="erp-req">*</span></label>
                   <input className="erp-input" id="f-name" required placeholder="e.g. Jane Doe" value={name} onChange={e => setName(e.target.value)} />
@@ -198,12 +267,39 @@ export function EventRsvpPage() {
                   <label htmlFor="f-notes">How can CoreMentra help you?</label>
                   <textarea className="erp-input" id="f-notes" rows={4} placeholder="Tell us about your goals, questions, or what you'd like to discuss after the event." value={notes} onChange={e => setNotes(e.target.value)} />
                 </div>
-                {status === "error" && <p style={{ color: "#e5484d", fontSize: 13, margin: 0 }}>Something went wrong — please try again.</p>}
-                <button type="submit" className="erp-btn-primary" disabled={status === "submitting"}>
-                  {status === "submitting" ? "Submitting…" : "Submit Details"}
+                <button type="submit" className="erp-btn-primary">
+                  Continue to Scheduling
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>
                 </button>
               </form>
+            </>
+          )}
+
+          {(status === "schedule" || status === "submitting" || status === "error") && (
+            <>
+              <div className="erp-hero">
+                <span className="erp-pill">Almost there, {firstName}</span>
+                <h1>Pick a <span className="erp-grad">Time to Meet</span></h1>
+                <p className="erp-lead">Your details are saved once you book a time below.</p>
+              </div>
+
+              <div className="erp-card" style={{ padding: 0, overflow: "hidden" }}>
+                {calendlyError ? (
+                  <p style={{ color: "#e5484d", fontSize: 14, margin: 0, padding: 24, textAlign: "center" }}>{calendlyError}</p>
+                ) : (
+                  <div ref={calendlyRef} style={{ minWidth: 280, height: 700 }} />
+                )}
+                {status === "submitting" && (
+                  <p style={{ fontSize: 13, color: "#5a5c6e", margin: 0, padding: "0 20px 20px", textAlign: "center" }}>Finalizing your registration…</p>
+                )}
+                {status === "error" && (
+                  <div style={{ padding: "0 20px 20px", textAlign: "center" }}>
+                    <p style={{ color: "#e5484d", fontSize: 13, margin: "0 0 10px" }}>Your time was booked, but we couldn't save your details — please try again.</p>
+                    <button type="button" className="erp-btn-soft" onClick={submitProspect}>Try again</button>
+                  </div>
+                )}
+              </div>
+              <button type="button" className="erp-btn-soft" onClick={() => setStatus("form")}>← Edit my details</button>
             </>
           )}
 
