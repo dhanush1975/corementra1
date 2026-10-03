@@ -145,7 +145,5 @@ export type ScreenId =
   | "clients"
   | "products"
   | "income"
-  | "feedback"
   | "agents"
-  | "ai"
   | "data";

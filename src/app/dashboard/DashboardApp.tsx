@@ -12,11 +12,9 @@ import { PipelineScreen } from "./screens/PipelineScreen";
 import { FollowUpsScreen } from "./screens/FollowUpsScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
 import { ClientsScreen } from "./screens/ClientsScreen";
-import { FeedbackScreen } from "./screens/FeedbackScreen";
 import { ProductsScreen } from "./screens/ProductsScreen";
 import { IncomeScreen } from "./screens/IncomeScreen";
 import { AgentsScreen } from "./screens/AgentsScreen";
-import { AIScreen } from "./screens/AIScreen";
 import { DataScreen } from "./screens/DataScreen";
 
 const NAV: { id: ScreenId; label: string; icon: string }[] = [
@@ -28,9 +26,7 @@ const NAV: { id: ScreenId; label: string; icon: string }[] = [
   { id: "clients", label: "Clients", icon: "M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M12 4a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7M17 13.5a4.5 4.5 0 0 1 4 4.5v1" },
   { id: "products", label: "Products", icon: "M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10" },
   { id: "income", label: "Income", icon: "M12 3v18M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.1-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3.3-2 3.2-4.5 3.2-4.5-1.1-4.5-3" },
-  { id: "feedback", label: "Feedback", icon: "M4 5h16v11H9l-5 4z" },
   { id: "agents", label: "Agents", icon: "M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
-  { id: "ai", label: "AI Assistant", icon: "M12 3l2.2 5.3L19.5 10l-5.3 1.7L12 17l-2.2-5.3L4.5 10l5.3-1.7z" },
   { id: "data", label: "Data", icon: "M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" },
 ];
 
@@ -170,11 +166,9 @@ export function DashboardApp() {
           {screen === "followUps" && <FollowUpsScreen db={db} commit={commit} />}
           {screen === "calendar" && <CalendarScreen db={db} commit={commit} />}
           {screen === "clients" && <ClientsScreen db={db} income={income} commit={commit} />}
-          {screen === "feedback" && <FeedbackScreen db={db} commit={commit} />}
           {screen === "products" && <ProductsScreen products={products} setProducts={updateProducts} />}
           {screen === "income" && <IncomeScreen db={db} products={products} income={income} setIncome={updateIncome} />}
           {screen === "agents" && <AgentsScreen db={db} income={income} commit={commit} />}
-          {screen === "ai" && <AIScreen db={db} income={income} />}
           {screen === "data" && <DataScreen db={db} income={income} commit={commit} resetSeed={() => resetSeed(seedIncomeSample)} resetEmpty={() => resetEmpty(clearIncome)} />}
         </div>
       </main>
