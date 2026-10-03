@@ -141,6 +141,7 @@ export type ScreenId =
   | "events"
   | "pipeline"
   | "followUps"
+  | "calendar"
   | "clients"
   | "products"
   | "income"

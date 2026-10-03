@@ -10,6 +10,7 @@ import { DashboardScreen } from "./screens/DashboardScreen";
 import { EventsScreen } from "./screens/EventsScreen";
 import { PipelineScreen } from "./screens/PipelineScreen";
 import { FollowUpsScreen } from "./screens/FollowUpsScreen";
+import { CalendarScreen } from "./screens/CalendarScreen";
 import { ClientsScreen } from "./screens/ClientsScreen";
 import { FeedbackScreen } from "./screens/FeedbackScreen";
 import { ProductsScreen } from "./screens/ProductsScreen";
@@ -23,6 +24,7 @@ const NAV: { id: ScreenId; label: string; icon: string }[] = [
   { id: "events", label: "Events", icon: "M4 6h16v14H4zM8 3v4M16 3v4M4 11h16" },
   { id: "pipeline", label: "Pipeline", icon: "M4 6h16M7 12h10M10 18h4" },
   { id: "followUps", label: "Follow-Ups", icon: "M20 12a8 8 0 1 1-4.4-7.1M9 12l2.6 2.6L20 6" },
+  { id: "calendar", label: "Calendar", icon: "M7 3v4M17 3v4M4 9h16M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" },
   { id: "clients", label: "Clients", icon: "M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M12 4a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7M17 13.5a4.5 4.5 0 0 1 4 4.5v1" },
   { id: "products", label: "Products", icon: "M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10" },
   { id: "income", label: "Income", icon: "M12 3v18M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.1-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3.3-2 3.2-4.5 3.2-4.5-1.1-4.5-3" },
@@ -166,6 +168,7 @@ export function DashboardApp() {
           {screen === "events" && <EventsScreen db={db} commit={commit} />}
           {screen === "pipeline" && <PipelineScreen db={db} commit={commit} />}
           {screen === "followUps" && <FollowUpsScreen db={db} commit={commit} />}
+          {screen === "calendar" && <CalendarScreen db={db} commit={commit} />}
           {screen === "clients" && <ClientsScreen db={db} income={income} commit={commit} />}
           {screen === "feedback" && <FeedbackScreen db={db} commit={commit} />}
           {screen === "products" && <ProductsScreen products={products} setProducts={updateProducts} />}
