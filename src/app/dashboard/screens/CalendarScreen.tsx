@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { shortDate, today } from "../data";
+import { shortDate, shortTime, today } from "../data";
 import { blankRecord } from "../forms";
 import { RecordModal } from "../RecordModal";
 import { DBtn, DCard, EmptyState, Pill } from "../ui";
@@ -84,18 +84,27 @@ export function CalendarScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
   };
 
   const Row = ({ r }: { r: FollowUp }) => (
-    <button onClick={() => setModal(r)} className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#f5f5f5] transition-colors">
+    <button
+      onClick={() => setModal(r)}
+      className={`w-full text-left flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-colors ${
+        r.status === "Completed" ? "border-[#eef0f3] bg-[#fafbfc]" : "border-[#dbe4fd] bg-white hover:border-[#0070f3] hover:bg-[#f5f9ff]"
+      }`}
+    >
       <span
         onClick={e => { e.stopPropagation(); toggleStatus(r); }}
         className={`w-4 h-4 rounded-full border shrink-0 ${r.status === "Completed" ? "bg-[#14683f] border-[#14683f]" : "border-[#d0d5dd]"}`}
       />
       <div className="min-w-0 flex-1">
-        <div className={`text-sm font-medium truncate ${r.status === "Completed" ? "line-through text-[#98a2b3]" : ""}`}>{r.subject}</div>
+        <div className={`text-sm font-bold truncate ${r.status === "Completed" ? "line-through text-[#98a2b3]" : "text-[#1c3a5e]"}`}>
+          {r.subject}{r.dueTime ? " · " + shortTime(r.dueTime) : ""}
+        </div>
         <div className="text-xs text-[#98a2b3] truncate">{r.agent}{r.note ? " · " + r.note : ""}</div>
       </div>
       <Pill tone={r.type === "Appointment" ? "purple" : "blue"}>{r.type}</Pill>
     </button>
   );
+
+  const selectedLabel = new Date(selected + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
   return (
     <div className="flex flex-col gap-4">
@@ -108,60 +117,62 @@ export function CalendarScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
         <DBtn onClick={() => setModal({ ...blankRecord("followUps"), dueDate: selected })}>+ New for {shortDate(selected)}</DBtn>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">
-        <DCard className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-bold">{monthLabel}</h3>
-            <div className="flex items-center gap-1.5">
-              <DBtn variant="secondary" onClick={() => goMonth(-1)}>←</DBtn>
-              <DBtn variant="secondary" onClick={goToday}>Today</DBtn>
-              <DBtn variant="secondary" onClick={() => goMonth(1)}>→</DBtn>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4 items-start">
+        <DCard className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-xl font-bold">{monthLabel}</h3>
+            <div className="flex items-center gap-3">
+              <button onClick={() => goMonth(-1)} className="w-8 h-8 rounded-full flex items-center justify-center text-[#667085] hover:bg-[#f5f5f5] transition-colors text-lg">‹</button>
+              <button onClick={goToday} className="text-xs font-semibold text-[#0070f3] hover:underline">Today</button>
+              <button onClick={() => goMonth(1)} className="w-8 h-8 rounded-full flex items-center justify-center text-[#667085] hover:bg-[#f5f5f5] transition-colors text-lg">›</button>
             </div>
           </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-[#98a2b3] mb-1">
+          <div className="grid grid-cols-7 text-center text-[12px] font-semibold text-[#98a2b3] mb-2">
             {WEEKDAYS.map(w => <div key={w} className="py-1">{w}</div>)}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-y-1.5">
             {cells.map(c => {
               const items = byDate[c.dateStr] || [];
               const apptCount = items.filter(f => f.type === "Appointment").length;
               const fuCount = items.length - apptCount;
+              const hasItems = apptCount > 0 || fuCount > 0;
               const isSelected = c.dateStr === selected;
               const isToday = c.dateStr === todayStr;
               return (
-                <button
-                  key={c.dateStr}
-                  onClick={() => setSelected(c.dateStr)}
-                  className={`aspect-square rounded-xl flex flex-col items-center justify-center gap-1 text-[13px] transition-colors
-                    ${isSelected ? "bg-[#0a0a0a] text-white" : isToday ? "bg-[#eaf1f9] text-[#141a20]" : c.inMonth ? "hover:bg-[#f5f5f5] text-[#0a0a0a]" : "text-[#c1c7d0] hover:bg-[#f5f5f5]"}`}
-                >
-                  <span className="font-semibold">{c.date.getDate()}</span>
-                  {(apptCount > 0 || fuCount > 0) && (
-                    <span className="flex items-center gap-0.5">
-                      {apptCount > 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: isSelected ? "#fff" : "#8b5cf0" }} />}
-                      {fuCount > 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: isSelected ? "#fff" : "#3f7fe0" }} />}
-                    </span>
-                  )}
-                </button>
+                <div key={c.dateStr} className="flex items-center justify-center">
+                  <button
+                    onClick={() => setSelected(c.dateStr)}
+                    className={`relative w-11 h-11 rounded-full flex items-center justify-center text-[15px] font-semibold transition-colors
+                      ${isSelected ? "bg-[#0070f3] text-white" : isToday ? "border-2 border-[#0070f3] text-[#0070f3]" : hasItems ? "bg-[#eaf1fb] text-[#1c3a5e] hover:bg-[#d9e8fc]" : c.inMonth ? "text-[#344054] hover:bg-[#f5f5f5]" : "text-[#d0d5dd] hover:bg-[#f5f5f5]"}`}
+                  >
+                    {c.date.getDate()}
+                    {hasItems && (
+                      <span className="absolute bottom-1 flex items-center gap-0.5">
+                        {apptCount > 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: isSelected ? "#fff" : "#8b5cf0" }} />}
+                        {fuCount > 0 && <span className="w-1.5 h-1.5 rounded-full" style={{ background: isSelected ? "#fff" : "#3f7fe0" }} />}
+                      </span>
+                    )}
+                  </button>
+                </div>
               );
             })}
           </div>
         </DCard>
 
-        <DCard className="p-4 flex flex-col gap-4">
+        <DCard className="p-6 flex flex-col gap-5">
           <div>
-            <h4 className="text-sm font-bold">{shortDate(selected)}</h4>
-            <p className="text-xs text-[#98a2b3]">{selectedItems.length} scheduled</p>
+            <h4 className="text-xl font-bold">{selectedLabel}</h4>
+            <p className="text-sm text-[#98a2b3] mt-0.5">{selectedItems.length} scheduled</p>
           </div>
 
           <div>
-            <h5 className="text-[11px] uppercase tracking-wider text-[#98a2b3] mb-1.5">Appointments</h5>
-            {appointments.length ? <div className="flex flex-col gap-0.5">{appointments.map(r => <Row key={r.id} r={r} />)}</div> : <EmptyState>No appointments this day.</EmptyState>}
+            <h5 className="text-[11px] uppercase tracking-wider text-[#98a2b3] mb-2">Appointments</h5>
+            {appointments.length ? <div className="flex flex-col gap-2">{appointments.map(r => <Row key={r.id} r={r} />)}</div> : <EmptyState>No appointments this day.</EmptyState>}
           </div>
 
           <div>
-            <h5 className="text-[11px] uppercase tracking-wider text-[#98a2b3] mb-1.5">Follow-Ups</h5>
-            {followUps.length ? <div className="flex flex-col gap-0.5">{followUps.map(r => <Row key={r.id} r={r} />)}</div> : <EmptyState>No follow-ups this day.</EmptyState>}
+            <h5 className="text-[11px] uppercase tracking-wider text-[#98a2b3] mb-2">Follow-Ups</h5>
+            {followUps.length ? <div className="flex flex-col gap-2">{followUps.map(r => <Row key={r.id} r={r} />)}</div> : <EmptyState>No follow-ups this day.</EmptyState>}
           </div>
         </DCard>
       </div>
