@@ -152,7 +152,9 @@ export function EventRsvpPage() {
           source: "Event / Workshop",
           need: interest,
           agent: "",
-          stage: "NEW",
+          // This only runs after Calendly confirms a real booking, so the
+          // lead has already scheduled a meeting — skip New/Contacted.
+          stage: "APPOINTMENT",
           plan: "Not decided yet",
           lastContact: today(),
           notes: notes.trim() || "Submitted via event registration link.",
