@@ -81,6 +81,7 @@ const schema = a.schema({
     subject: a.string().required(),
     type: a.string(),
     dueDate: a.string(),
+    dueTime: a.string(),
     status: a.string(),
     note: a.string(),
     agent: a.string(),

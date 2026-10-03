@@ -4,7 +4,7 @@ import type { Agent, Db } from "./types";
 export type FieldDef = {
   k: string;
   l: string;
-  t: "text" | "date" | "select" | "number" | "area";
+  t: "text" | "date" | "time" | "select" | "number" | "area";
   options?: string[];
   from?: keyof Db;
   fromAgents?: boolean;
@@ -42,6 +42,7 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
     { k: "agent", l: "Agent", t: "select", fromAgents: true },
     { k: "type", l: "Type", t: "select", options: ["Call", "Email", "Appointment", "Task"] },
     { k: "dueDate", l: "Due date", t: "date" },
+    { k: "dueTime", l: "Time", t: "time", optional: true },
     { k: "status", l: "Status", t: "select", options: ["Open", "Completed"] },
     { k: "prospectId", l: "Linked prospect", t: "select", from: "prospects", optional: true },
     { k: "contactCount", l: "Times contacted", t: "number", optional: true },

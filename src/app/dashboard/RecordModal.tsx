@@ -50,7 +50,7 @@ export function RecordModal({
               ) : f.t === "area" ? (
                 <DTextarea value={draft[f.k] ?? ""} onChange={set(f.k)} />
               ) : (
-                <DInput type={f.t === "number" ? "number" : f.t === "date" ? "date" : "text"} value={draft[f.k] ?? ""} onChange={set(f.k)} />
+                <DInput type={f.t === "number" ? "number" : f.t === "date" ? "date" : f.t === "time" ? "time" : "text"} value={draft[f.k] ?? ""} onChange={set(f.k)} />
               )}
             </Field>
           </div>

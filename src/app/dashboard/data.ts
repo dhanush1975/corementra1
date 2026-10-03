@@ -32,6 +32,13 @@ export const pct4 = (n: number) => (Number(n) || 0).toFixed(4) + "%";
 export const pct = (n: number, d: number) => (d ? Math.round((n / d) * 1000) / 10 + "%" : "—");
 export const today = () => new Date().toISOString().slice(0, 10);
 export const shortDate = (d?: string) => (d ? new Date(d + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "—");
+export const shortTime = (t?: string) => {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h, m || 0, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+};
 export const dayDiff = (d: string) => Math.round((new Date(d + "T00:00:00").getTime() - new Date(today() + "T00:00:00").getTime()) / 86400000);
 export const initials = (n?: string) => String(n || "").split(" ").filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("");
 export const plainVal = (v: string | undefined) => (["Not captured yet", "Not decided yet", "", undefined].includes(v) ? "" : v);

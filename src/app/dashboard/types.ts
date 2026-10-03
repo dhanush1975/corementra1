@@ -60,6 +60,7 @@ export interface FollowUp {
   subject: string;
   type: "Call" | "Email" | "Appointment" | "Task";
   dueDate: string;
+  dueTime?: string;
   status: "Open" | "Completed";
   note: string;
   agent: string;
