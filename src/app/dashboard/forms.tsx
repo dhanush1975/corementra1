@@ -35,6 +35,7 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
     { k: "stage", l: "Stage", t: "select", options: [...STAGES] },
     { k: "plan", l: "Plan / product interested in", t: "select", options: PLANS, span2: true },
     { k: "lastContact", l: "Last contact", t: "date" },
+    { k: "birthday", l: "Birthday", t: "date", optional: true },
     { k: "notes", l: "Notes", t: "area", span2: true },
   ],
   followUps: [
@@ -57,6 +58,7 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
     { k: "agent", l: "Added under (their upline)", t: "select", fromAgents: true, optional: true, span2: true },
     { k: "source", l: "Referral source", t: "select", options: SOURCES },
     { k: "since", l: "Client since", t: "date" },
+    { k: "birthday", l: "Birthday", t: "date", optional: true },
   ],
   purchases: [
     { k: "clientId", l: "Client / partner", t: "select", from: "clients", span2: true },
@@ -96,7 +98,7 @@ export const ENTITY_META: Record<string, { singular: string; plural: string }> =
 export function blankRecord(key: string): any {
   const rec: any = { id: uid() };
   (ENTITY_FIELDS[key] || []).forEach(f => {
-    rec[f.k] = f.t === "date" ? today() : f.t === "select" && f.options ? f.options[0] : f.t === "number" ? 0 : "";
+    rec[f.k] = f.t === "date" && !f.optional ? today() : f.t === "select" && f.options ? f.options[0] : f.t === "number" ? 0 : "";
   });
   if (key === "prospects") { rec.stage = "NEW"; rec.plan = PLANS[0]; rec.eventId = ""; rec.kind = KINDS[0]; }
   if (key === "followUps") rec.status = "Open";

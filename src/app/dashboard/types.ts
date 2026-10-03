@@ -30,6 +30,7 @@ export interface Prospect {
   notes: string;
   kind: ProspectKind;
   completedAt?: string;
+  birthday?: string;
 }
 
 export interface Client {
@@ -43,6 +44,7 @@ export interface Client {
   source: string;
   since: string;
   prospectId?: string;
+  birthday?: string;
 }
 
 export interface Purchase {
@@ -147,4 +149,5 @@ export type ScreenId =
   | "products"
   | "income"
   | "agents"
+  | "automation"
   | "data";

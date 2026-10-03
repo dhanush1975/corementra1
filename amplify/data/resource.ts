@@ -1,4 +1,5 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { sendOccasionEmails } from '../functions/send-occasion-emails/resource';
 
 /**
  * CRM dashboard schema. Mirrors src/app/dashboard/types.ts exactly.
@@ -54,6 +55,7 @@ const schema = a.schema({
     notes: a.string(),
     kind: a.string(),
     completedAt: a.string(),
+    birthday: a.string(),
   }).authorization(allow => [allow.authenticated(), allow.publicApiKey().to(['create'])]),
 
   Client: a.model({
@@ -66,6 +68,7 @@ const schema = a.schema({
     source: a.string(),
     since: a.string(),
     prospectId: a.string(),
+    birthday: a.string(),
   }).authorization(allow => [allow.authenticated()]),
 
   Purchase: a.model({
@@ -142,7 +145,30 @@ const schema = a.schema({
   Settings: a.model({
     levels: a.integer().array(),
   }).authorization(allow => [allow.authenticated()]),
-});
+
+  // One row per occasion ("Birthday" / "Anniversary") — a single reusable
+  // template, not per-milestone-year. {{name}} and {{years}} in body get
+  // substituted by the sending function before it goes out.
+  EmailTemplate: a.model({
+    occasion: a.string().required(),
+    subject: a.string(),
+    body: a.string(),
+    flyerKey: a.string(),
+    active: a.boolean(),
+  }).authorization(allow => [allow.authenticated()]),
+
+  // Audit trail + same-year dedupe guard for the scheduled sender function.
+  EmailLog: a.model({
+    recipientType: a.string(),
+    recipientId: a.string(),
+    recipientEmail: a.string(),
+    recipientName: a.string(),
+    occasion: a.string(),
+    sentAt: a.string(),
+    status: a.string(),
+    errorMessage: a.string(),
+  }).authorization(allow => [allow.authenticated()]),
+}).authorization(allow => [allow.resource(sendOccasionEmails).to(['query', 'mutate'])]);
 
 export type Schema = ClientSchema<typeof schema>;
 
