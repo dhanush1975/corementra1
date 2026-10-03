@@ -2,12 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import logo from "@/imports/logo/corementra-logo-trimmed.png";
 import { client } from "./client";
-import { today, uid } from "./data";
+import { NEEDS, today, uid } from "./data";
 import type { EventRecord } from "./types";
 
 type Status = "loading" | "notFound" | "loadError" | "form" | "schedule" | "submitting" | "done" | "error";
-
-const INTERESTS = ["Wealth management", "Investment advisory", "Business financing", "Tax & planning", "Something else"];
 
 const CALENDLY_URL = "https://calendly.com/amit-arakeswara/amit-arakeswara-s-calendar";
 
@@ -86,7 +84,7 @@ export function EventRsvpPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [interest, setInterest] = useState(INTERESTS[0]);
+  const [interest, setInterest] = useState(NEEDS[0]);
   const [notes, setNotes] = useState("");
 
   const [loadErrorDetail, setLoadErrorDetail] = useState("");
@@ -119,7 +117,7 @@ export function EventRsvpPage() {
   }, [eventId]);
 
   const resetForm = () => {
-    setName(""); setEmail(""); setPhone(""); setInterest(INTERESTS[0]); setNotes("");
+    setName(""); setEmail(""); setPhone(""); setInterest(NEEDS[0]); setNotes("");
     setStatus("form");
   };
 
@@ -260,7 +258,7 @@ export function EventRsvpPage() {
                 <div className="erp-field">
                   <label htmlFor="f-interest">Interested In</label>
                   <select className="erp-input" id="f-interest" value={interest} onChange={e => setInterest(e.target.value)}>
-                    {INTERESTS.map(i => <option key={i}>{i}</option>)}
+                    {NEEDS.map(i => <option key={i}>{i}</option>)}
                   </select>
                 </div>
                 <div className="erp-field">
