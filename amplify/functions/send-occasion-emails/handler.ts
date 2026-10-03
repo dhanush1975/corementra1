@@ -36,12 +36,29 @@ function yearsSince(dateStr: string, year: number) {
   return year - d.getUTCFullYear();
 }
 
+// A filtered list() only filters the page it scanned, so this has to walk
+// every page — otherwise a matching log row past the first page is missed
+// and the same person is emailed again on a retry.
 async function alreadySent(recipientId: string, occasion: Occasion, year: number) {
-  const { data } = await client.models.EmailLog.list({
-    filter: { recipientId: { eq: recipientId }, occasion: { eq: occasion }, status: { eq: 'Sent' } },
-  });
-  return data.some(l => l.sentAt && new Date(l.sentAt).getUTCFullYear() === year);
+  let nextToken: string | null | undefined;
+  do {
+    const res = await client.models.EmailLog.list({
+      filter: { recipientId: { eq: recipientId }, occasion: { eq: occasion }, status: { eq: 'Sent' } },
+      limit: 1000,
+      nextToken,
+    });
+    if (res.data.some(l => l.sentAt && new Date(l.sentAt).getUTCFullYear() === year)) return true;
+    nextToken = res.nextToken;
+  } while (nextToken);
+  return false;
 }
+
+// What gets merged into {{name}}: one line, no control characters, capped.
+function mergeName(name: string) {
+  return name.replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+const EMAIL_RE = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 
 async function fetchFlyer(flyerKey: string | null | undefined) {
   if (!flyerKey) return null;
@@ -111,20 +128,20 @@ export const handler = async () => {
     const clients = await listAll(client.models.Client as any) as Array<{ id: string; name: string; email?: string | null; birthday?: string | null }>;
     const prospects = await listAll(client.models.Prospect as any) as Array<{ id: string; name: string; email?: string | null; birthday?: string | null }>;
     for (const c of [...clients.map(c => ({ ...c, type: 'Client' as const })), ...prospects.map(p => ({ ...p, type: 'Prospect' as const }))]) {
-      if (!c.email || !matchesMonthDay(c.birthday, month, day)) continue;
+      if (!c.email || !EMAIL_RE.test(c.email) || !matchesMonthDay(c.birthday, month, day)) continue;
       if (await alreadySent(c.id, 'Birthday', year)) continue;
-      await send(birthdayTemplate, { id: c.id, type: c.type, name: c.name, email: c.email }, 'Birthday', { name: c.name });
+      await send(birthdayTemplate, { id: c.id, type: c.type, name: c.name, email: c.email }, 'Birthday', { name: mergeName(c.name) });
     }
   }
 
   if (anniversaryTemplate) {
     const clients = await listAll(client.models.Client as any) as Array<{ id: string; name: string; email?: string | null; since?: string | null }>;
     for (const c of clients) {
-      if (!c.email || !c.since || !matchesMonthDay(c.since, month, day)) continue;
+      if (!c.email || !EMAIL_RE.test(c.email) || !c.since || !matchesMonthDay(c.since, month, day)) continue;
       const years = yearsSince(c.since, year);
       if (years < 1) continue;
       if (await alreadySent(c.id, 'Anniversary', year)) continue;
-      await send(anniversaryTemplate, { id: c.id, type: 'Client', name: c.name, email: c.email }, 'Anniversary', { name: c.name, years: String(years) });
+      await send(anniversaryTemplate, { id: c.id, type: 'Client', name: c.name, email: c.email }, 'Anniversary', { name: mergeName(c.name), years: String(years) });
     }
   }
 

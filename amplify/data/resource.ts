@@ -1,5 +1,6 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 import { sendOccasionEmails } from '../functions/send-occasion-emails/resource';
+import { publicRsvp } from '../functions/public-rsvp/resource';
 
 /**
  * CRM dashboard schema. Mirrors src/app/dashboard/types.ts exactly.
@@ -24,23 +25,21 @@ const schema = a.schema({
     registered: a.integer(),
     attended: a.integer(),
     completedAt: a.string(),
-  }).authorization(allow => [allow.authenticated(), allow.publicApiKey().to(['read'])]),
+  }).authorization(allow => [allow.authenticated()]),
 
-  // Prospect allows public-API-key `create` only — the public
-  // event-registration page (src/app/dashboard/EventRsvpPage.tsx) writes
-  // new leads directly. Read/update/delete stay authenticated-only so a
-  // visitor can never browse or tamper with existing prospects.
+  // No model is reachable with the public API key. The public
+  // event-registration page (src/app/dashboard/EventRsvpPage.tsx) goes
+  // through the two custom operations at the bottom of this schema, which
+  // run the public-rsvp function: it validates the input and fixes every
+  // field a visitor has no business choosing (stage, agent, kind, birthday).
   //
-  // Uses a public API key rather than allow.guest() (IAM via Identity
-  // Pool) deliberately: IAM credentials from an unauthenticated Identity
-  // Pool escalate to the pool's AUTHENTICATED role the moment the same
-  // browser also has a signed-in Cognito session (e.g. the admin testing
-  // an event link in one tab while signed into /dashboard in another) —
-  // and that authenticated role has no grant here, since allow.authenticated()
-  // on this schema means userPool (JWT) auth, not IAM. That produced a
-  // real "Not Authorized" bug. A static API key has no session state to
-  // collide with, so it works the same regardless of what else is signed
-  // in in that browser.
+  // Those operations use a public API key rather than allow.guest() (IAM
+  // via Identity Pool) deliberately: IAM credentials from an unauthenticated
+  // Identity Pool escalate to the pool's AUTHENTICATED role the moment the
+  // same browser also has a signed-in Cognito session (e.g. the admin
+  // testing an event link in one tab while signed into /dashboard in
+  // another), which produced a real "Not Authorized" bug. A static API key
+  // has no session state to collide with.
   Prospect: a.model({
     name: a.string().required(),
     email: a.string(),
@@ -56,7 +55,7 @@ const schema = a.schema({
     kind: a.string(),
     completedAt: a.string(),
     birthday: a.string(),
-  }).authorization(allow => [allow.authenticated(), allow.publicApiKey().to(['create'])]),
+  }).authorization(allow => [allow.authenticated()]),
 
   Client: a.model({
     name: a.string().required(),
@@ -168,7 +167,36 @@ const schema = a.schema({
     status: a.string(),
     errorMessage: a.string(),
   }).authorization(allow => [allow.authenticated()]),
-}).authorization(allow => [allow.resource(sendOccasionEmails).to(['query', 'mutate'])]);
+
+  // The public surface, in full: look up one event's name, and submit a
+  // registration for it.
+  PublicEvent: a.customType({
+    id: a.string().required(),
+    name: a.string().required(),
+  }),
+
+  getPublicEvent: a.query()
+    .arguments({ id: a.string().required() })
+    .returns(a.ref('PublicEvent'))
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(publicRsvp)),
+
+  registerForEvent: a.mutation()
+    .arguments({
+      eventId: a.string().required(),
+      name: a.string().required(),
+      email: a.string().required(),
+      phone: a.string().required(),
+      interest: a.string(),
+      notes: a.string(),
+    })
+    .returns(a.boolean())
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(publicRsvp)),
+}).authorization(allow => [
+  allow.resource(sendOccasionEmails).to(['query', 'mutate']),
+  allow.resource(publicRsvp).to(['query', 'mutate']),
+]);
 
 export type Schema = ClientSchema<typeof schema>;
 
@@ -176,9 +204,12 @@ export const data = defineData({
   schema,
   authorizationModes: {
     defaultAuthorizationMode: 'userPool',
-    // Powers the two allow.publicApiKey() rules above (public event
-    // read + public prospect create). Max allowed lifetime is 365 days;
-    // the key needs regenerating (redeploy) after that.
+    // Powers the two allow.publicApiKey() operations above (getPublicEvent
+    // + registerForEvent). Max allowed lifetime is 365 days; the key needs
+    // regenerating (redeploy) after that.
     apiKeyAuthorizationMode: { expiresInDays: 365 },
   },
+  // Request-level audit trail in CloudWatch, without logging the query
+  // variables (which carry names, emails and phone numbers).
+  logging: { fieldLogLevel: 'error', excludeVerboseContent: true, retention: '3 months' },
 });

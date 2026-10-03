@@ -730,7 +730,14 @@ export function download(name: string, text: string, type?: string) {
 }
 
 export function toCsv<T extends Record<string, any>>(rows: T[], keys: string[]) {
-  const esc = (v: any) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  // A cell starting with = + - @ (or a tab/CR) is run as a formula by
+  // Excel/Sheets. Text values that start that way get a leading apostrophe
+  // so they open as plain text; real numbers (e.g. -5) are left alone.
+  const esc = (v: any) => {
+    let s = String(v == null ? "" : v);
+    if (typeof v !== "number" && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return '"' + s.replace(/"/g, '""') + '"';
+  };
   return [keys.join(",")].concat(rows.map(r => keys.map(k => esc(r[k])).join(","))).join("\n");
 }
 

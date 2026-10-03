@@ -1,34 +1,38 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import logo from "@/imports/logo/corementra-logo-trimmed.png";
 import { client } from "./client";
-import { NEEDS, today, uid } from "./data";
-import type { EventRecord } from "./types";
+import { NEEDS } from "./data";
 
 type Status = "loading" | "notFound" | "loadError" | "form" | "schedule" | "submitting" | "done" | "error";
 
 const CALENDLY_URL = "https://calendly.com/amit-arakeswara/amit-arakeswara-s-calendar";
 
-// Loaded once and cached — Calendly's inline widget needs its own script/css
-// from their CDN; initInlineWidget() is what actually renders a picker into
-// a given container, called fresh each time we enter the "schedule" step.
-let calendlyScriptPromise: Promise<void> | null = null;
-function loadCalendlyScript(): Promise<void> {
-  if ((window as any).Calendly) return Promise.resolve();
-  if (calendlyScriptPromise) return calendlyScriptPromise;
-  calendlyScriptPromise = new Promise((resolve, reject) => {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://assets.calendly.com/assets/external/widget.css";
-    document.head.appendChild(link);
-    const script = document.createElement("script");
-    script.src = "https://assets.calendly.com/assets/external/widget.js";
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load the scheduler — please refresh and try again."));
-    document.body.appendChild(script);
-  });
-  return calendlyScriptPromise;
+const CALENDLY_ORIGIN = new URL(CALENDLY_URL).origin;
+
+// Same rules the server enforces (amplify/functions/public-rsvp/handler.ts).
+// Checked here first so nobody books a time and only then finds out their
+// details were rejected.
+const NAME_RE = /^[\p{L}\p{M}][\p{L}\p{M} .,'’-]{0,79}$/u;
+const PHONE_RE = /^[+(]?[0-9][0-9 ().-]{5,24}$/;
+const NOTES_MAX = 1000;
+
+// Calendly's scheduler is embedded as a plain cross-origin iframe rather
+// than through their widget.js: that script would run on this origin, the
+// same one the signed-in dashboard keeps its session on. embed_domain /
+// embed_type are what tell Calendly it's embedded, which is what makes it
+// post booking events back to this window.
+function calendlyEmbedUrl(prefill: { name: string; email: string; phone: string }) {
+  const url = new URL(CALENDLY_URL);
+  url.searchParams.set("embed_domain", window.location.host);
+  url.searchParams.set("embed_type", "Inline");
+  url.searchParams.set("name", prefill.name);
+  url.searchParams.set("email", prefill.email);
+  // a1 maps to the event type's first custom question — the "anything that
+  // will help prepare for our meeting" notes field — so the phone number
+  // lands there instead of being lost.
+  url.searchParams.set("a1", "Phone: " + prefill.phone);
+  return url.toString();
 }
 
 const STYLES = `
@@ -80,27 +84,26 @@ const STYLES = `
 export function EventRsvpPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const [status, setStatus] = useState<Status>("loading");
-  const [event, setEvent] = useState<EventRecord | null>(null);
+  const [event, setEvent] = useState<{ id: string; name: string } | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [interest, setInterest] = useState(NEEDS[0]);
   const [notes, setNotes] = useState("");
 
-  const [loadErrorDetail, setLoadErrorDetail] = useState("");
-  const [calendlyError, setCalendlyError] = useState("");
-  const calendlyRef = useRef<HTMLDivElement>(null);
+  const [formError, setFormError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [calendlySrc, setCalendlySrc] = useState("");
 
   useEffect(() => {
     if (!eventId) { setStatus("notFound"); return; }
-    client.models.Event.get({ id: eventId }, { authMode: "apiKey" })
+    client.queries.getPublicEvent({ id: eventId }, { authMode: "apiKey" })
       .then(res => {
-        if (res.data) { setEvent(res.data as unknown as EventRecord); setStatus("form"); return; }
+        if (res.data) { setEvent(res.data); setStatus("form"); return; }
         if (res.errors?.length) {
           // The query ran but was rejected (auth/permissions/etc) — this is
-          // NOT "event doesn't exist", show the real reason.
+          // NOT "event doesn't exist". Details go to the console only.
           console.error("Event lookup errors:", res.errors);
-          setLoadErrorDetail(res.errors.map(e => e.message).join("; "));
           setStatus("loadError");
           return;
         }
@@ -111,7 +114,6 @@ export function EventRsvpPage() {
         // Never reached AppSync at all — network/credentials/CORS failure,
         // not a "this event doesn't exist" situation.
         console.error("Event lookup failed:", err);
-        setLoadErrorDetail(err?.message || String(err));
         setStatus("loadError");
       });
   }, [eventId]);
@@ -134,62 +136,40 @@ export function EventRsvpPage() {
   // becomes a lead.
   const handleDetailsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setCalendlyError("");
+    const cleanName = name.trim().replace(/\s+/g, " ");
+    if (!NAME_RE.test(cleanName)) { setFormError("Please enter your name using letters only (up to 80 characters)."); return; }
+    if (!PHONE_RE.test(phone.trim())) { setFormError("Please enter a valid phone number, e.g. +1 555 000 0000."); return; }
+    if (notes.trim().length > NOTES_MAX) { setFormError(`Please keep your message under ${NOTES_MAX} characters.`); return; }
+    setFormError("");
+    setSubmitError("");
+    // Built once per visit to this step so the iframe isn't reloaded (and
+    // an in-progress booking lost) by an unrelated re-render.
+    setCalendlySrc(calendlyEmbedUrl({ name: cleanName, email: email.trim(), phone: phone.trim() }));
     setStatus("schedule");
   };
 
+  // The server decides everything beyond these contact details (stage,
+  // source, record type…) and re-validates each of them.
   const submitProspect = async () => {
     if (!eventId) return;
     setStatus("submitting");
+    setSubmitError("");
     try {
-      const res = await client.models.Prospect.create(
-        {
-          id: uid(),
-          name,
-          email,
-          phone,
-          eventId,
-          source: "Event / Workshop",
-          need: interest,
-          agent: "",
-          // This only runs after Calendly confirms a real booking, so the
-          // lead has already scheduled a meeting — skip New/Contacted.
-          stage: "APPOINTMENT",
-          plan: "Not decided yet",
-          lastContact: today(),
-          notes: notes.trim() || "Submitted via event registration link.",
-          kind: "Prospect",
-        },
+      const res = await client.mutations.registerForEvent(
+        { eventId, name, email, phone, interest, notes: notes.trim() },
         { authMode: "apiKey" },
       );
-      if (res.errors?.length) { setStatus("error"); return; }
+      if (res.errors?.length) {
+        // Validation messages from the server are written for the visitor.
+        setSubmitError(res.errors[0].message);
+        setStatus("error");
+        return;
+      }
       setStatus("done");
     } catch {
       setStatus("error");
     }
   };
-
-  // Render the Calendly picker, prefilled with what they just entered, once
-  // the "schedule" step is reached.
-  useEffect(() => {
-    if (status !== "schedule") return;
-    let cancelled = false;
-    loadCalendlyScript()
-      .then(() => {
-        if (cancelled || !calendlyRef.current) return;
-        calendlyRef.current.innerHTML = "";
-        (window as any).Calendly.initInlineWidget({
-          url: CALENDLY_URL,
-          parentElement: calendlyRef.current,
-          // a1 maps to the event type's first custom question — the
-          // "anything that will help prepare for our meeting" notes field —
-          // so the phone number lands there instead of being lost.
-          prefill: { name, email, customAnswers: { a1: "Phone: " + phone } },
-        });
-      })
-      .catch(err => !cancelled && setCalendlyError(err.message || String(err)));
-    return () => { cancelled = true; };
-  }, [status, name, email, phone]);
 
   // The only trigger that actually creates the Prospect record: Calendly
   // posts this message to the parent window the moment a real time slot
@@ -197,7 +177,7 @@ export function EventRsvpPage() {
   useEffect(() => {
     if (status !== "schedule") return;
     const onMessage = (e: MessageEvent) => {
-      if (e.origin.includes("calendly.com") && e.data?.event === "calendly.event_scheduled") {
+      if (e.origin === CALENDLY_ORIGIN && e.data?.event === "calendly.event_scheduled") {
         submitProspect();
       }
     };
@@ -232,10 +212,9 @@ export function EventRsvpPage() {
           {status === "loadError" && (
             <div className="erp-card" style={{ textAlign: "center", padding: "48px 24px" }}>
               <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 700 }}>Couldn't load this page</h2>
-              <p style={{ margin: "0 0 12px", color: "#5a5c6e", fontSize: 15 }}>
+              <p style={{ margin: 0, color: "#5a5c6e", fontSize: 15 }}>
                 Something blocked the connection (not a bad link) — try disabling browser extensions or opening this in a private window.
               </p>
-              <p style={{ margin: 0, color: "#9a9cad", fontSize: 12, fontFamily: "monospace", wordBreak: "break-word" }}>{loadErrorDetail}</p>
             </div>
           )}
 
@@ -250,15 +229,15 @@ export function EventRsvpPage() {
               <form onSubmit={handleDetailsSubmit} className="erp-card">
                 <div className="erp-field">
                   <label htmlFor="f-name">Full Name<span className="erp-req">*</span></label>
-                  <input className="erp-input" id="f-name" required placeholder="e.g. Jane Doe" value={name} onChange={e => setName(e.target.value)} />
+                  <input className="erp-input" id="f-name" required placeholder="e.g. Jane Doe" maxLength={80} value={name} onChange={e => setName(e.target.value)} />
                 </div>
                 <div className="erp-field">
                   <label htmlFor="f-email">Email<span className="erp-req">*</span></label>
-                  <input className="erp-input" id="f-email" type="email" required placeholder="e.g. jane.doe@company.com" value={email} onChange={e => setEmail(e.target.value)} />
+                  <input className="erp-input" id="f-email" type="email" required placeholder="e.g. jane.doe@company.com" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} />
                 </div>
                 <div className="erp-field">
                   <label htmlFor="f-phone">Phone Number<span className="erp-req">*</span></label>
-                  <input className="erp-input" id="f-phone" type="tel" required placeholder="e.g. +1 555 000 0000" value={phone} onChange={e => setPhone(e.target.value)} />
+                  <input className="erp-input" id="f-phone" type="tel" required placeholder="e.g. +1 555 000 0000" maxLength={25} value={phone} onChange={e => setPhone(e.target.value)} />
                 </div>
                 <div className="erp-field">
                   <label htmlFor="f-interest">Interested In</label>
@@ -268,8 +247,9 @@ export function EventRsvpPage() {
                 </div>
                 <div className="erp-field">
                   <label htmlFor="f-notes">How can CoreMentra help you?</label>
-                  <textarea className="erp-input" id="f-notes" rows={4} placeholder="Tell us about your goals, questions, or what you'd like to discuss after the event." value={notes} onChange={e => setNotes(e.target.value)} />
+                  <textarea className="erp-input" id="f-notes" rows={4} maxLength={NOTES_MAX} placeholder="Tell us about your goals, questions, or what you'd like to discuss after the event." value={notes} onChange={e => setNotes(e.target.value)} />
                 </div>
+                {formError && <p style={{ color: "#e5484d", fontSize: 13, margin: 0 }}>{formError}</p>}
                 <button type="submit" className="erp-btn-primary">
                   Continue to Scheduling
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>
@@ -287,17 +267,13 @@ export function EventRsvpPage() {
               </div>
 
               <div className="erp-card" style={{ padding: 0, overflow: "hidden" }}>
-                {calendlyError ? (
-                  <p style={{ color: "#e5484d", fontSize: 14, margin: 0, padding: 24, textAlign: "center" }}>{calendlyError}</p>
-                ) : (
-                  <div ref={calendlyRef} style={{ minWidth: 280, height: 700 }} />
-                )}
+                <iframe title="Pick a time to meet" src={calendlySrc} style={{ display: "block", width: "100%", minWidth: 280, height: 700, border: 0 }} />
                 {status === "submitting" && (
                   <p style={{ fontSize: 13, color: "#5a5c6e", margin: 0, padding: "0 20px 20px", textAlign: "center" }}>Finalizing your registration…</p>
                 )}
                 {status === "error" && (
                   <div style={{ padding: "0 20px 20px", textAlign: "center" }}>
-                    <p style={{ color: "#e5484d", fontSize: 13, margin: "0 0 10px" }}>Your time was booked, but we couldn't save your details — please try again.</p>
+                    <p style={{ color: "#e5484d", fontSize: 13, margin: "0 0 10px" }}>Your time was booked, but we couldn't save your details. {submitError || "Please try again."}</p>
                     <button type="button" className="erp-btn-soft" onClick={submitProspect}>Try again</button>
                   </div>
                 )}

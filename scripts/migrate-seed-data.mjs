@@ -4,16 +4,17 @@
 // create() from the app would produce. A raw DynamoDB write bypasses that
 // and produces items the generated client can't parse back out.
 //
-// Run:  node scripts/migrate-seed-data.mjs
+// Run:  ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='...' node scripts/migrate-seed-data.mjs
+// (credentials come from the environment so they never land in the repo or
+// in a process listing as command-line arguments)
 import { Amplify } from "aws-amplify";
 import { signIn } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 import outputs from "../amplify_outputs.json" with { type: "json" };
 
-const ADMIN_EMAIL = "dhanushvarma6@gmail.com";
-const ADMIN_PASSWORD = process.argv[2];
-if (!ADMIN_PASSWORD) {
-  console.error("Usage: node scripts/migrate-seed-data.mjs <admin-password>");
+const { ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  console.error("Usage: ADMIN_EMAIL=... ADMIN_PASSWORD=... node scripts/migrate-seed-data.mjs");
   process.exit(1);
 }
 
