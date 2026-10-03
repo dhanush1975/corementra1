@@ -1,4 +1,4 @@
-import { FileText, Phone, Tag, User } from "lucide-react";
+import { FileText, Phone, PhoneCall, Tag, User } from "lucide-react";
 import { useMemo, useState } from "react";
 import { dayDiff, initials, isFresh, shortDate } from "../data";
 import { blankRecord } from "../forms";
@@ -22,6 +22,8 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
   const [view, setView] = useState<"board" | "table">("board");
   const [modal, setModal] = useState<FollowUp | null>(null);
 
+  const phoneOf = (prospectId: string) => db.prospects.find(p => p.id === prospectId)?.phone || "";
+
   const sorted = db.followUps.slice().sort((a, b) => (a.status === b.status ? a.dueDate.localeCompare(b.dueDate) : a.status === "Open" ? -1 : 1));
 
   // Stamps/clears completedAt when status crosses into/out of "Completed",
@@ -38,6 +40,7 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
     { key: "dueDate", label: "Due", render: r => shortDate(r.dueDate), sortValue: r => r.dueDate },
     { key: "when", label: "When", render: whenLabel },
     { key: "subject", label: "Who / what", render: r => <span className="font-medium">{r.subject}</span>, sortValue: r => r.subject },
+    { key: "phone", label: "Phone", render: r => phoneOf(r.prospectId) || "—", sortValue: r => phoneOf(r.prospectId) },
     { key: "type", label: "Type", render: r => <TagPill text={r.type} /> },
     { key: "note", label: "Note", render: r => <span className="text-[#667085]">{r.note}</span> },
     { key: "agent", label: "Agent", render: r => r.agent },
@@ -47,6 +50,16 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
           {r.contactCount ?? 0}× <span className="text-[11px] text-[#98a2b3] font-normal">+1</span>
         </button>
       ), sortValue: r => r.contactCount ?? 0,
+    },
+    {
+      key: "nextContact", label: "Next contact", render: r => (
+        <input
+          type="date"
+          value={r.dueDate}
+          onChange={e => reschedule(r, e.target.value)}
+          className="h-8 px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+        />
+      ),
     },
     {
       key: "status", label: "Status", render: r => (
@@ -80,6 +93,12 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
   const logContact = (rec: FollowUp) => {
     const updated = { ...rec, contactCount: (rec.contactCount ?? 0) + 1, lastContactedAt: new Date().toISOString() };
     commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? updated : f)) }, "Logged contact with " + rec.subject);
+  };
+  // Moves the follow-up's due date forward — it drops off today's list
+  // (Calendar, "overdue"/"today" sorting) and reappears on the new date.
+  const reschedule = (rec: FollowUp, dueDate: string) => {
+    if (!dueDate) return;
+    commit({ ...db, followUps: db.followUps.map(f => (f.id === rec.id ? { ...f, dueDate } : f)) }, "Next contact for " + rec.subject + " set to " + shortDate(dueDate));
   };
 
   const boardRows = useMemo(() => sorted.filter(r => r.status !== "Completed" || isFresh(r.completedAt)), [sorted]);
@@ -135,11 +154,21 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
                 <CardRow icon={<Tag size={14} />}>{r.type}</CardRow>
                 <CardRow icon={<FileText size={14} />}>{r.note}</CardRow>
                 <CardRow icon={<User size={14} />}>{r.agent}</CardRow>
+                {phoneOf(r.prospectId) && <CardRow icon={<PhoneCall size={14} />}>{phoneOf(r.prospectId)}</CardRow>}
                 <CardRow icon={<Phone size={14} />}>
                   {r.contactCount ?? 0} contact{(r.contactCount ?? 0) === 1 ? "" : "s"}
                   {r.lastContactedAt ? " · last " + shortDate(r.lastContactedAt.slice(0, 10)) : ""}
                 </CardRow>
                 <CardPillButton onClick={() => logContact(r)}>Log contact</CardPillButton>
+                <div onClick={e => e.stopPropagation()} className="flex items-center gap-2 mt-0.5">
+                  <label className="text-[11px] text-[#98a2b3] font-semibold shrink-0">Next contact</label>
+                  <input
+                    type="date"
+                    value={r.dueDate}
+                    onChange={e => reschedule(r, e.target.value)}
+                    className="h-8 px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3] flex-1 min-w-0"
+                  />
+                </div>
               </>
             );
           }}
