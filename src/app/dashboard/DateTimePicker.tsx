@@ -32,7 +32,7 @@ export function DateTimePicker({
     const d = date ? new Date(date + "T00:00:00") : new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
-  const [draftDate, setDraftDate] = useState(date);
+  const [draftDate, setDraftDate] = useState(date || today());
   const [draftTime, setDraftTime] = useState(time || "");
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -40,7 +40,10 @@ export function DateTimePicker({
   const todayStr = today();
 
   const openPicker = () => {
-    setDraftDate(date);
+    // No existing date (fresh creation, not a reschedule) defaults to
+    // today — without this, a time-slot click with nothing picked yet
+    // silently does nothing (pickTime requires a draftDate to apply).
+    setDraftDate(date || today());
     setDraftTime(time || "");
     const d = date ? new Date(date + "T00:00:00") : new Date();
     setCursor(new Date(d.getFullYear(), d.getMonth(), 1));

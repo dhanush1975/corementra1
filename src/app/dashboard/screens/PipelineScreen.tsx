@@ -1,12 +1,15 @@
 import { Clock, Mail, MapPin, TrendingUp } from "lucide-react";
-import { useMemo, useState } from "react";
-import { dayDiff, initials, isFresh, shortDate, STAGES, STAGE_TITLES, today, uid } from "../data";
+import { useMemo, useRef, useState } from "react";
+import { dayDiff, initials, isFresh, shortDate, STAGES, STAGE_TITLES, uid } from "../data";
 import { blankRecord } from "../forms";
+import { DateTimePicker } from "../DateTimePicker";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
-import { BoardCardHeader, BoardHint, BoardToggle, CardPillButton, CardRow, KanbanBoard, type BoardColumn } from "../Board";
+import { BoardCardHeader, BoardHint, BoardToggle, CardRow, KanbanBoard, type BoardColumn } from "../Board";
 import { DBtn, DCard, DInput } from "../ui";
 import type { Db, FollowUp, Prospect, Stage } from "../types";
+
+const FOLLOWUP_TYPES: FollowUp["type"][] = ["Call", "Email", "Appointment", "Task"];
 
 const DOTS: Record<Stage, string> = {
   NEW: "#3f7fe0",
@@ -28,6 +31,9 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState<Prospect | null>(null);
   const [selected, setSelected] = useState<Prospect | null>(null);
+  const [fuType, setFuType] = useState<Record<string, FollowUp["type"]>>({});
+  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
+  const undoTimer = useRef<number | null>(null);
 
   const q = query.trim().toLowerCase();
   const visible = db.prospects.filter(p => !q || (p.name + p.need + p.source + p.agent).toLowerCase().includes(q));
@@ -73,9 +79,24 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
     const finalRec = applyCompletion({ ...rec, stage }, rec.stage);
     commit({ ...db, prospects: db.prospects.map(p => (p.id === rec.id ? finalRec : p)) }, rec.name + " → " + STAGE_TITLES[stage]);
   };
-  const addFollowUp = (p: Prospect) => {
-    const fu: FollowUp = { id: uid(), prospectId: p.id, subject: p.name, type: "Call", dueDate: today(), status: "Open", note: "", agent: p.agent, contactCount: 0 };
+  // Only fires once a date/time is actually picked (see the DateTimePicker
+  // below) — the prospect then drops off the Pipeline board immediately
+  // (see boardRows) since they're now being worked via Follow-Ups instead,
+  // with a 5s Undo that deletes the follow-up again to bring them back.
+  const addFollowUp = (p: Prospect, dueDate: string, dueTime: string) => {
+    const type = fuType[p.id] ?? "Call";
+    const fu: FollowUp = { id: uid(), prospectId: p.id, subject: p.name, type, dueDate, dueTime, status: "Open", note: "", agent: p.agent, contactCount: 0 };
     commit({ ...db, followUps: [fu, ...db.followUps] }, p.name + " added to Follow-Ups");
+    setSelected(s => (s?.id === p.id ? null : s));
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    setUndo({ id: fu.id, name: p.name });
+    undoTimer.current = window.setTimeout(() => setUndo(null), 5000);
+  };
+  const undoAddFollowUp = () => {
+    if (!undo) return;
+    commit({ ...db, followUps: db.followUps.filter(f => f.id !== undo.id) }, "Undid adding " + undo.name + " to Follow-Ups");
+    if (undoTimer.current) window.clearTimeout(undoTimer.current);
+    setUndo(null);
   };
   const convert = (rec: Prospect, type: "Client" | "Partner" | "Both") => {
     const exists = db.clients.find(c => c.name.trim().toLowerCase() === rec.name.trim().toLowerCase());
@@ -85,8 +106,13 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
     commit({ ...db, clients, prospects }, rec.name + " converted to " + type.toLowerCase());
   };
 
-  const boardRows = useMemo(() => visible.filter(p => !isTerminal(p.stage) || isFresh(p.completedAt)), [visible]);
-  const hiddenCount = visible.length - boardRows.length;
+  const hasOpenFollowUp = (p: Prospect) => db.followUps.some(f => f.prospectId === p.id && f.status === "Open");
+  const boardRows = useMemo(
+    () => visible.filter(p => (!isTerminal(p.stage) || isFresh(p.completedAt)) && !hasOpenFollowUp(p)),
+    [visible, db.followUps],
+  );
+  const closedHiddenCount = visible.filter(p => isTerminal(p.stage) && !isFresh(p.completedAt)).length;
+  const followUpHiddenCount = visible.length - boardRows.length - closedHiddenCount;
 
   return (
     <div className="flex flex-col gap-4">
@@ -107,10 +133,15 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
         {view === "board" && <BoardHint />}
       </div>
 
-      {view === "board" && hiddenCount > 0 && (
+      {view === "board" && closedHiddenCount > 0 && (
         <p className="text-xs text-[#98a2b3] -mt-2">
-          {hiddenCount} closed more than a day ago —{" "}
+          {closedHiddenCount} closed more than a day ago —{" "}
           <button onClick={() => setView("table")} className="underline hover:text-[#667085]">see them in Table</button>.
+        </p>
+      )}
+      {view === "board" && followUpHiddenCount > 0 && (
+        <p className="text-xs text-[#98a2b3] -mt-2">
+          {followUpHiddenCount} moved to Follow-Ups — see them there or on the Calendar.
         </p>
       )}
 
@@ -144,7 +175,17 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
                 {p.need && <CardRow icon={<TrendingUp size={14} />}>Interested in {p.need}</CardRow>}
                 {fus.length > 0 && <CardRow icon={<Clock size={14} />}>{fus.length} scheduled, {done > 0 ? done + " done" : "none done yet"}</CardRow>}
                 {p.email && <CardRow icon={<Mail size={14} />}>{p.email}</CardRow>}
-                <CardPillButton onClick={() => addFollowUp(p)}>+ Follow-up</CardPillButton>
+                <div onClick={e => e.stopPropagation()} className="flex flex-col gap-1.5 mt-0.5">
+                  <label className="text-[11px] text-[#98a2b3] font-semibold">Add to Follow-Ups</label>
+                  <select
+                    value={fuType[p.id] ?? "Call"}
+                    onChange={e => setFuType(prev => ({ ...prev, [p.id]: e.target.value as FollowUp["type"] }))}
+                    className="h-8 w-full px-2 rounded-lg border border-[#e5e5e5] bg-white text-[12px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+                  >
+                    {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <DateTimePicker date="" time="" placeholder="Pick date & time" onApply={(date, time) => addFollowUp(p, date, time)} />
+                </div>
               </>
             );
           }}
@@ -176,7 +217,17 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
                 Advance to {STAGE_TITLES[STAGES[Math.min(STAGES.indexOf(selected.stage) + 1, 4)]]}
               </DBtn>
             )}
-            <DBtn variant="secondary" onClick={() => addFollowUp(selected)}>Add to Follow-Ups</DBtn>
+            <div className="flex flex-col gap-1.5 py-1">
+              <label className="text-[11px] text-[#98a2b3] font-semibold">Add to Follow-Ups</label>
+              <select
+                value={fuType[selected.id] ?? "Call"}
+                onChange={e => setFuType(prev => ({ ...prev, [selected.id]: e.target.value as FollowUp["type"] }))}
+                className="h-9 w-full px-2.5 rounded-xl border border-[#e5e5e5] bg-white text-[13px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+              >
+                {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <DateTimePicker date="" time="" placeholder="Pick date & time" onApply={(date, time) => addFollowUp(selected, date, time)} />
+            </div>
             {CONVERTIBLE_STAGES.includes(selected.stage) && (
               <>
                 <DBtn variant="secondary" onClick={() => convert(selected, "Client")}>Convert to Client</DBtn>
@@ -191,6 +242,13 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
       )}
 
       {modal && <RecordModal entityKey="prospects" record={modal} db={db} agents={db.agents} onSave={save} onDelete={() => del(modal)} onClose={() => setModal(null)} />}
+
+      {undo && (
+        <div className="fixed bottom-6 right-6 z-[110] flex items-center gap-3 bg-[#0a0a0a] text-white text-[13px] rounded-xl pl-4 pr-3 py-3 shadow-2xl">
+          <span>Moved <strong>{undo.name}</strong> to Follow-Ups</span>
+          <button onClick={undoAddFollowUp} className="font-semibold text-[#8fc1ff] hover:text-white underline underline-offset-2 shrink-0">Undo</button>
+        </div>
+      )}
     </div>
   );
 }
