@@ -12,7 +12,9 @@ export function ProductsScreen({ products, setProducts }: { products: Product[];
 
   const inTab = tab === "All" ? products : products.filter(p => p.category === tab);
   const q = query.trim().toLowerCase();
-  const rows = (q ? inTab.filter(p => (p.provider + " " + p.product).toLowerCase().includes(q)) : inTab).map(p => {
+  const filtered = q ? inTab.filter(p => (p.provider + " " + p.product).toLowerCase().includes(q)) : inTab;
+  const sorted = filtered.slice().sort((a, b) => (a.provider + a.product).localeCompare(b.provider + b.product));
+  const rows = sorted.map(p => {
     const yours = (p.base * (Number(contractPct) || 0)) / 100;
     const cash = ((Number(premium) || 0) * yours) / 100;
     return { p, yours, cash };

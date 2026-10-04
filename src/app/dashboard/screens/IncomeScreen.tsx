@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { INC_PERIODS, money, saleWriting, shortDate, today, uid } from "../data";
 import { DBtn, DCard, DSelect, EmptyState, Field, Modal, DInput, Pill } from "../ui";
+import { SearchSelect } from "../SearchSelect";
 import type { Db, IncomeData, Product, Sale, PartnerIncome } from "../types";
 
 function inPeriod(dateStr: string, period: string) {
@@ -165,10 +166,13 @@ function SaleForm({ rec, db, products, onSave, onCancel }: { rec: Sale; db: Db; 
       </Field>
       <div className="sm:col-span-2">
         <Field label="Product">
-          <DSelect value={draft.productId} onChange={e => { const p = products.find(x => x.id === e.target.value); setDraft({ ...draft, productId: e.target.value, productLabel: p ? p.provider + " · " + p.product : "", basePct: p ? p.base : draft.basePct }); }}>
-            <option value="">Choose product...</option>
-            {products.map(p => <option key={p.id} value={p.id}>{p.provider} · {p.product}</option>)}
-          </DSelect>
+          <SearchSelect
+            options={products}
+            value={draft.productId}
+            labelOf={p => p.provider + " · " + p.product}
+            placeholder="Search products..."
+            onSelect={p => setDraft({ ...draft, productId: p.id, productLabel: p.provider + " · " + p.product, basePct: p.base })}
+          />
         </Field>
       </div>
       <Field label="Target premium ($)"><DInput type="number" value={draft.premium} onChange={e => setDraft({ ...draft, premium: Number(e.target.value) })} /></Field>

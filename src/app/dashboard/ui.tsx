@@ -46,10 +46,18 @@ export function DBtn({
 }
 
 export function DInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  const { className = "", ...rest } = props;
+  const { className = "", onFocus, ...rest } = props;
+  // A number field defaulted to 0 otherwise forces you to backspace it
+  // manually before typing the real value — select it on focus instead so
+  // the first keystroke just replaces it.
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (props.type === "number" && (e.target.value === "0" || e.target.value === "")) e.target.select();
+    onFocus?.(e);
+  };
   return (
     <input
       {...rest}
+      onFocus={handleFocus}
       className={`w-full h-10 px-3 rounded-xl border border-[#e5e5e5] bg-white text-sm text-[#0a0a0a] focus:outline-none focus:border-[#0070f3] focus:ring-2 focus:ring-[#0070f3]/15 transition ${className}`}
     />
   );
