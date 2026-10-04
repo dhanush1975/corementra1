@@ -168,11 +168,12 @@ const schema = a.schema({
     errorMessage: a.string(),
   }).authorization(allow => [allow.authenticated()]),
 
-  // The public surface, in full: look up one event's name, and submit a
-  // registration for it.
+  // The public surface, in full: look up one event's name/status, and
+  // submit a registration for it.
   PublicEvent: a.customType({
     id: a.string().required(),
     name: a.string().required(),
+    status: a.string(),
   }),
 
   getPublicEvent: a.query()

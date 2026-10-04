@@ -4,7 +4,7 @@ import logo from "@/imports/logo/corementra-logo-trimmed.png";
 import { client } from "./client";
 import { NEEDS } from "./data";
 
-type Status = "loading" | "notFound" | "loadError" | "form" | "schedule" | "submitting" | "done" | "error";
+type Status = "loading" | "notFound" | "loadError" | "completed" | "form" | "schedule" | "submitting" | "done" | "error";
 
 const CALENDLY_URL = "https://calendly.com/amit-arakeswara/amit-arakeswara-s-calendar";
 
@@ -84,7 +84,7 @@ const STYLES = `
 export function EventRsvpPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const [status, setStatus] = useState<Status>("loading");
-  const [event, setEvent] = useState<{ id: string; name: string } | null>(null);
+  const [event, setEvent] = useState<{ id: string; name: string; status?: string | null } | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -99,7 +99,11 @@ export function EventRsvpPage() {
     if (!eventId) { setStatus("notFound"); return; }
     client.queries.getPublicEvent({ id: eventId }, { authMode: "apiKey" })
       .then(res => {
-        if (res.data) { setEvent(res.data); setStatus("form"); return; }
+        if (res.data) {
+          setEvent(res.data);
+          setStatus(res.data.status === "Completed" ? "completed" : "form");
+          return;
+        }
         if (res.errors?.length) {
           // The query ran but was rejected (auth/permissions/etc) — this is
           // NOT "event doesn't exist". Details go to the console only.
@@ -214,6 +218,17 @@ export function EventRsvpPage() {
               <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 700 }}>Couldn't load this page</h2>
               <p style={{ margin: 0, color: "#5a5c6e", fontSize: 15 }}>
                 Something blocked the connection (not a bad link) — try disabling browser extensions or opening this in a private window.
+              </p>
+            </div>
+          )}
+
+          {status === "completed" && (
+            <div className="erp-card" style={{ textAlign: "center", padding: "48px 24px" }}>
+              <h2 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 700 }}>This event has already happened</h2>
+              <p style={{ margin: 0, color: "#5a5c6e", fontSize: 15 }}>
+                {event?.name ? `${event.name} is` : "This event is"} marked completed, so registration is closed. If
+                you'd still like to connect, reach out through{" "}
+                <a href="/">corementra.com</a>.
               </p>
             </div>
           )}

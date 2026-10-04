@@ -35,7 +35,7 @@ async function findEvent(id: string) {
 async function getPublicEvent(args: Record<string, unknown>) {
   const event = await findEvent(str(args.id));
   // Only what the registration page shows — never expense or attendance.
-  return event ? { id: event.id, name: event.name } : null;
+  return event ? { id: event.id, name: event.name, status: event.status } : null;
 }
 
 async function registerForEvent(args: Record<string, unknown>) {
@@ -52,6 +52,7 @@ async function registerForEvent(args: Record<string, unknown>) {
 
   const event = await findEvent(str(args.eventId));
   if (!event) throw new Error('This registration link is not valid.');
+  if (event.status === 'Completed') throw new Error('This event has already taken place.');
 
   // Everything below the contact details is decided here, not by the
   // caller: a visitor can't pick a stage, an agent, a record type or a
