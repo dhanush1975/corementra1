@@ -48,10 +48,12 @@ export function DBtn({
 export function DInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const { className = "", onFocus, ...rest } = props;
   // A number field defaulted to 0 otherwise forces you to backspace it
-  // manually before typing the real value — select it on focus instead so
-  // the first keystroke just replaces it.
+  // manually before typing the real value. select() is unreliable across
+  // browsers for type="number", so clear it directly instead — this is a
+  // one-off DOM write, not a React re-render, so it only touches the
+  // literal placeholder "0" and never fights a value the user is mid-typing.
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    if (props.type === "number" && (e.target.value === "0" || e.target.value === "")) e.target.select();
+    if (props.type === "number" && e.target.value === "0") e.target.value = "";
     onFocus?.(e);
   };
   return (
