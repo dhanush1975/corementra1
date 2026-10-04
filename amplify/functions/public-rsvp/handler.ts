@@ -78,8 +78,10 @@ async function registerForEvent(args: Record<string, unknown>) {
   return true;
 }
 
-export const handler = async (event: { info: { fieldName: string }; arguments: Record<string, unknown> }) => {
-  switch (event.info.fieldName) {
+// Amplify's function resolver passes the operation name as a top-level
+// `fieldName` (there is no AppSync-style `info` object on this event).
+export const handler = async (event: { fieldName: string; arguments: Record<string, unknown> }) => {
+  switch (event.fieldName) {
     case 'getPublicEvent': return getPublicEvent(event.arguments);
     case 'registerForEvent': return registerForEvent(event.arguments);
     default: throw new Error('Unsupported operation.');
