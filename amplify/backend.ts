@@ -7,6 +7,9 @@ import { data } from './data/resource';
 import { storage } from './storage/resource';
 import { sendOccasionEmails } from './functions/send-occasion-emails/resource';
 import { publicRsvp } from './functions/public-rsvp/resource';
+import { blogApi } from './functions/blog/api-resource';
+import { blogWriter } from './functions/blog/writer-resource';
+import { blogCron } from './functions/blog/cron-resource';
 
 const backend = defineBackend({
   auth,
@@ -14,6 +17,9 @@ const backend = defineBackend({
   storage,
   sendOccasionEmails,
   publicRsvp,
+  blogApi,
+  blogWriter,
+  blogCron,
 });
 
 // Single-user dashboard: block public self-registration at the Cognito

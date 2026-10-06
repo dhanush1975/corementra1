@@ -4,13 +4,14 @@ customHeaders:
     headers:
       # Only our own code runs here. Calendly is allowed as an embedded
       # frame only; AWS endpoints are the Cognito / AppSync / S3 calls.
+      # images.pexels.com serves the blog's cover photos.
       - key: Content-Security-Policy
         value: >-
           default-src 'self';
           script-src 'self';
           style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
           font-src 'self' data: https://fonts.gstatic.com;
-          img-src 'self' data: blob: https://images.unsplash.com https://*.amazonaws.com;
+          img-src 'self' data: blob: https://images.unsplash.com https://images.pexels.com https://*.amazonaws.com;
           connect-src 'self' https://*.amazonaws.com wss://*.amazonaws.com;
           frame-src https://calendly.com;
           frame-ancestors 'none';

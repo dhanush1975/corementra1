@@ -10,6 +10,7 @@ export type Page =
   | "retirement-planning"
   | "hnwi-estate-planning"
   | "life-insurance"
+  | "blog"
   | "contact";
 
 export const inter = "Inter, sans-serif";

@@ -42,6 +42,8 @@ import {
 import { DashboardApp } from "./dashboard/DashboardApp";
 import { AuthGate } from "./dashboard/AuthGate";
 import { EventRsvpPage } from "./dashboard/EventRsvpPage";
+import { BlogPage } from "./blog/BlogPage";
+import { BlogPostPage } from "./blog/BlogPostPage";
 
 const pageToPath: Record<Page, string> = {
   home: "/",
@@ -53,10 +55,12 @@ const pageToPath: Record<Page, string> = {
   "retirement-planning": "/retirement-planning",
   "hnwi-estate-planning": "/hnwi-estate-planning",
   "life-insurance": "/life-insurance",
+  blog: "/blog",
   contact: "/contact",
 };
 
 function pathToPage(pathname: string): Page {
+  if (pathname.startsWith("/blog/")) return "blog";
   const entry = Object.entries(pageToPath).find(([, path]) => path === pathname);
   return (entry ? (entry[0] as Page) : "home") as Page;
 }
@@ -115,6 +119,10 @@ function Navbar({ currentPage, navigate }: { currentPage: Page; navigate: (p: Pa
               )}
             </div>
 
+            <button onClick={() => go("blog")} className={`px-3 py-2 rounded-lg transition-colors ${currentPage === "blog" ? "text-[#0a0a0a] font-semibold" : "hover:text-[#0a0a0a]"}`}>
+              Blog
+            </button>
+
             <button onClick={() => go("contact")} className={`px-3 py-2 rounded-lg transition-colors ${currentPage === "contact" ? "text-[#0a0a0a] font-semibold" : "hover:text-[#0a0a0a]"}`}>
               Contact
             </button>
@@ -141,6 +149,7 @@ function Navbar({ currentPage, navigate }: { currentPage: Page; navigate: (p: Pa
             { label: "FAQ", page: "faq" as Page },
             { label: "Services", page: "services" as Page },
             ...servicePages.map(s => ({ label: `  · ${s.label}`, page: s.page })),
+            { label: "Blog", page: "blog" as Page },
             { label: "Contact", page: "contact" as Page },
           ].map(item => (
             <button key={item.page + item.label} onClick={() => go(item.page)} className="block w-full text-left py-2 px-2 text-sm text-[#737373] hover:text-[#0a0a0a] transition-colors font-medium">
@@ -173,6 +182,7 @@ function Footer({ navigate }: { navigate: (p: Page) => void }) {
                 { label: "Who Am I", page: "who-am-i" as Page },
                 { label: "Services", page: "services" as Page },
                 { label: "FAQ", page: "faq" as Page },
+                { label: "Blog", page: "blog" as Page },
                 { label: "Contact", page: "contact" as Page },
               ].map(l => (
                 <button key={l.page} onClick={() => navigate(l.page)} className="block text-sm text-[#737373] hover:text-[#0a0a0a] transition-colors text-left">
@@ -241,6 +251,8 @@ function Layout() {
             <Route path="/retirement-planning" element={<RetirementPlanningPage navigate={pageNavigate} />} />
             <Route path="/hnwi-estate-planning" element={<HNWIPage navigate={pageNavigate} />} />
             <Route path="/life-insurance" element={<LifeInsurancePage navigate={pageNavigate} />} />
+            <Route path="/blog" element={<BlogPage navigate={pageNavigate} />} />
+            <Route path="/blog/:slug" element={<BlogPostPage navigate={pageNavigate} />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

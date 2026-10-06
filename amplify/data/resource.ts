@@ -1,6 +1,9 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 import { sendOccasionEmails } from '../functions/send-occasion-emails/resource';
 import { publicRsvp } from '../functions/public-rsvp/resource';
+import { blogApi } from '../functions/blog/api-resource';
+import { blogWriter } from '../functions/blog/writer-resource';
+import { blogCron } from '../functions/blog/cron-resource';
 
 /**
  * CRM dashboard schema. Mirrors src/app/dashboard/types.ts exactly.
@@ -168,8 +171,9 @@ const schema = a.schema({
     errorMessage: a.string(),
   }).authorization(allow => [allow.authenticated()]),
 
-  // The public surface, in full: look up one event's name/status, and
-  // submit a registration for it.
+  // The public surface for events: look up one event's name/status, and
+  // submit a registration for it. (The blog's public reads are further
+  // down.)
   PublicEvent: a.customType({
     id: a.string().required(),
     name: a.string().required(),
@@ -194,9 +198,128 @@ const schema = a.schema({
     .returns(a.boolean())
     .authorization(allow => [allow.publicApiKey()])
     .handler(a.handler.function(publicRsvp)),
+
+  // ---- Blog ----------------------------------------------------------
+  // A published (or soft-deleted) article. `slug` is the key, so two
+  // articles can never share a URL — a soft-deleted one still holds its
+  // slug. The signed-in dashboard can read rows but not write them: every
+  // write goes through the blog-api function (publishArticle /
+  // removeArticle / restoreArticle below) or the daily blog-cron function.
+  Article: a.model({
+    slug: a.string().required(),
+    title: a.string().required(),
+    // The topic the article was written from. The AI picks its own title,
+    // so this is what stops the daily job choosing the same topic twice.
+    topic: a.string(),
+    category: a.string(),
+    excerpt: a.string(),
+    content: a.string().required(),
+    readTime: a.string(),
+    imageUrl: a.string(),
+    publishedAt: a.string(),
+    // Soft delete: set = hidden from the public blog, restorable.
+    deletedAt: a.string(),
+  }).identifier(['slug']).authorization(allow => [allow.authenticated().to(['read'])]),
+
+  // Topics waiting to be written, in the order shown on the Queue tab.
+  ArticleQueue: a.model({
+    title: a.string().required(),
+    category: a.string().required(),
+    position: a.integer(),
+  }).authorization(allow => [allow.authenticated()]),
+
+  // Where blog-writer leaves a generated draft (or the reason it failed)
+  // for the dashboard to pick up. Never public, and not an article until a
+  // person reviews it and publishes it.
+  ArticleDraft: a.model({
+    status: a.string().required(),
+    topic: a.string(),
+    category: a.string(),
+    payload: a.string(),
+    error: a.string(),
+  }).authorization(allow => [allow.authenticated().to(['read', 'delete'])]),
+
+  PublicArticleSummary: a.customType({
+    slug: a.string().required(),
+    title: a.string().required(),
+    category: a.string(),
+    excerpt: a.string(),
+    readTime: a.string(),
+    imageUrl: a.string(),
+    publishedAt: a.string(),
+  }),
+
+  PublicArticle: a.customType({
+    slug: a.string().required(),
+    title: a.string().required(),
+    category: a.string(),
+    excerpt: a.string(),
+    content: a.string().required(),
+    readTime: a.string(),
+    imageUrl: a.string(),
+    publishedAt: a.string(),
+    updatedAt: a.string(),
+  }),
+
+  // What the public /blog pages read. Soft-deleted articles are filtered
+  // out inside the function, so they drop off the site everywhere at once.
+  listPublicArticles: a.query()
+    .returns(a.ref('PublicArticleSummary').array())
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(blogApi)),
+
+  getPublicArticle: a.query()
+    .arguments({ slug: a.string().required() })
+    .returns(a.ref('PublicArticle'))
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(blogApi)),
+
+  publishArticle: a.mutation()
+    .arguments({
+      title: a.string().required(),
+      slug: a.string().required(),
+      category: a.string().required(),
+      excerpt: a.string(),
+      content: a.string().required(),
+      readTime: a.string(),
+      imageUrl: a.string(),
+      topic: a.string(),
+    })
+    .returns(a.string())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(blogApi)),
+
+  // Soft delete by default; `permanent` only works on an article that is
+  // already soft-deleted.
+  removeArticle: a.mutation()
+    .arguments({ slug: a.string().required(), permanent: a.boolean() })
+    .returns(a.boolean())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(blogApi)),
+
+  restoreArticle: a.mutation()
+    .arguments({ slug: a.string().required() })
+    .returns(a.boolean())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(blogApi)),
+
+  // Starts a draft and returns straight away (async): writing takes about
+  // 70 seconds, longer than a resolver may run. The result lands in
+  // ArticleDraft under the caller's jobId. Saves nothing to Article.
+  generateArticleDraft: a.mutation()
+    .arguments({
+      jobId: a.string().required(),
+      topic: a.string().required(),
+      category: a.string().required(),
+    })
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(blogWriter).async()),
 }).authorization(allow => [
   allow.resource(sendOccasionEmails).to(['query', 'mutate']),
   allow.resource(publicRsvp).to(['query', 'mutate']),
+  allow.resource(blogApi).to(['query', 'mutate']),
+  allow.resource(blogWriter).to(['query', 'mutate']),
+  allow.resource(blogCron).to(['query', 'mutate']),
 ]);
 
 export type Schema = ClientSchema<typeof schema>;
@@ -205,8 +328,9 @@ export const data = defineData({
   schema,
   authorizationModes: {
     defaultAuthorizationMode: 'userPool',
-    // Powers the two allow.publicApiKey() operations above (getPublicEvent
-    // + registerForEvent). Max allowed lifetime is 365 days; the key needs
+    // Powers the allow.publicApiKey() operations above (getPublicEvent +
+    // registerForEvent, and the blog's listPublicArticles +
+    // getPublicArticle). Max allowed lifetime is 365 days; the key needs
     // regenerating (redeploy) after that.
     apiKeyAuthorizationMode: { expiresInDays: 365 },
   },

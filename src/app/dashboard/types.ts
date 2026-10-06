@@ -150,4 +150,5 @@ export type ScreenId =
   | "income"
   | "agents"
   | "automation"
+  | "blog"
   | "data";

@@ -8,12 +8,10 @@ export function DashboardScreen({ db, income, goFollowUps }: { db: Db; income: I
   const totalCommission = income.sales.reduce((n, s) => n + saleWriting(s).writing, 0);
   const overdueCount = openFu.filter(f => dayDiff(f.dueDate) < 0).length;
 
-  const funnelBase = db.events.reduce((n, e) => n + (Number(e.attended) || 0), 0) || db.prospects.length;
   const contactedPlus = db.prospects.filter(p => ["CONTACTED", "APPOINTMENT", "IN PROCESS", "CONVERTED"].includes(p.stage)).length;
   const apptPlus = db.prospects.filter(p => ["APPOINTMENT", "IN PROCESS", "CONVERTED"].includes(p.stage)).length;
   const funnel = [
-    { label: "Attendees", count: funnelBase, rate: "—" },
-    { label: "Prospects", count: db.prospects.length, rate: pct(db.prospects.length, funnelBase) },
+    { label: "Prospects", count: db.prospects.length, rate: "—" },
     { label: "Contacted+", count: contactedPlus, rate: pct(contactedPlus, db.prospects.length) },
     { label: "Appointments", count: apptPlus, rate: pct(apptPlus, db.prospects.length) },
     { label: "Converted", count: conv.length, rate: pct(conv.length, db.prospects.length) },

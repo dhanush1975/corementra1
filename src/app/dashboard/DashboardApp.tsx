@@ -16,6 +16,7 @@ import { ProductsScreen } from "./screens/ProductsScreen";
 import { IncomeScreen } from "./screens/IncomeScreen";
 import { AgentsScreen } from "./screens/AgentsScreen";
 import { EmailAutomationScreen } from "./screens/EmailAutomationScreen";
+import { BlogScreen } from "./screens/BlogScreen";
 import { DataScreen } from "./screens/DataScreen";
 
 const NAV: { id: ScreenId; label: string; icon: string }[] = [
@@ -29,6 +30,7 @@ const NAV: { id: ScreenId; label: string; icon: string }[] = [
   { id: "income", label: "Income", icon: "M12 3v18M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.1-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3.3-2 3.2-4.5 3.2-4.5-1.1-4.5-3" },
   { id: "agents", label: "Agents", icon: "M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
   { id: "automation", label: "Automation", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8z" },
+  { id: "blog", label: "Blog", icon: "M4 4h12a2 2 0 0 1 2 2v14H6a2 2 0 0 1-2-2zM18 9h2v9a2 2 0 0 1-2 2M8 8h6M8 12h6M8 16h3" },
   { id: "data", label: "Data", icon: "M4 6c0 1.7 3.6 3 8 3s8-1.3 8-3-3.6-3-8-3-8 1.3-8 3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" },
 ];
 
@@ -172,6 +174,7 @@ export function DashboardApp() {
           {screen === "income" && <IncomeScreen db={db} products={products} income={income} setIncome={updateIncome} />}
           {screen === "agents" && <AgentsScreen db={db} income={income} commit={commit} />}
           {screen === "automation" && <EmailAutomationScreen />}
+          {screen === "blog" && <BlogScreen />}
           {screen === "data" && <DataScreen db={db} income={income} commit={commit} resetSeed={() => resetSeed(seedIncomeSample)} resetEmpty={() => resetEmpty(clearIncome)} />}
         </div>
       </main>
