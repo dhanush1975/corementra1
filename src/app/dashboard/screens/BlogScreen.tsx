@@ -279,7 +279,19 @@ export function BlogScreen() {
     setSuggesting(false);
     if (added.length < items.length) notify("red", `Added ${added.length} of ${items.length} topics; the rest could not be saved.`);
     else notify("green", `Added ${added.length} topics from your site.`);
+    return added.length;
   };
+
+  // When the last queued topic is used, top the queue up straight away
+  // from the site-based list. (Once that list runs out, the daily job adds
+  // AI-suggested topics instead.) One failed attempt stops it retrying.
+  const autoFillFailed = useRef(false);
+  useEffect(() => {
+    if (loading || loadError || suggesting || autoFillFailed.current) return;
+    if (queue.length > 0 || suggestions.length === 0) return;
+    addSuggested().then(added => { if (!added) autoFillFailed.current = true; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, loadError, queue.length, suggestions.length]);
 
   const writeOneOff = () => {
     run.current++;
@@ -594,7 +606,7 @@ export function BlogScreen() {
 
           {queue.length === 0 ? (
             <DCard className="p-5">
-              <EmptyState>The queue is empty. Add a topic above, or add topics based on your site's services.</EmptyState>
+              <EmptyState>The queue is empty. New topics are added automatically with the next daily article; you can also add one above.</EmptyState>
             </DCard>
           ) : (
             <>
@@ -623,7 +635,7 @@ export function BlogScreen() {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-[#98a2b3]">The daily automatic article picks its own topic from the same site-based list and doesn't use this queue.</p>
+              <p className="text-xs text-[#98a2b3]">When this queue runs out it refills itself with 12 new topics. The daily automatic article picks its own topic and leaves these for you.</p>
             </>
           )}
         </>

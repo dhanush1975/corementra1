@@ -34,11 +34,15 @@ const ArticleSchema = z.object({
   riskNotes: z.array(z.string()),
 });
 
+// category is a plain string here, checked in generateTopics(): the SDK's
+// schema helper rejects the type-less {enum: [...]} that z.enum() produces.
 const TopicSchema = z.object({
   title: z.string(),
-  category: z.enum(CATEGORIES),
+  category: z.string().describe(`Exactly one of: ${CATEGORIES.join(', ')}`),
   keywords: z.string(),
 });
+
+const TopicsSchema = z.object({ topics: z.array(TopicSchema) });
 
 export type Topic = z.infer<typeof TopicSchema>;
 export type WrittenArticle = z.infer<typeof ArticleSchema> & {
@@ -162,13 +166,23 @@ export async function writeArticle({ topic, category, keywords }: { topic: strin
   };
 }
 
-export async function generateTopic(usedTitles: string[]): Promise<Topic> {
+export async function generateTopics(usedTitles: string[], count: number): Promise<Topic[]> {
   const system = `You plan topics for the blog of CoreMentra, a United States financial-education and planning practice covering life insurance, retirement planning, estate planning, high-net-worth planning, everyday money skills and careers in financial services. Suggest topics a general reader would search for and that can be explained accurately without quoting figures that change every year.`;
-  const prompt = `Suggest one new article topic.
+  const prompt = `Suggest ${count} new article ${count === 1 ? 'topic' : 'topics, spread across the categories and each clearly different from the others'}.
 
-These titles are already published, so do not repeat or closely paraphrase any of them:
+These titles are already published or planned, so do not repeat or closely paraphrase any of them:
 ${usedTitles.map(t => `- ${t}`).join('\n') || '- (none yet)'}
 
-Return the article title, its category, and a few comma-separated search phrases.`;
-  return generate(TopicSchema, system, prompt, 4000);
+For each topic return the article title, its category, and a few comma-separated search phrases.`;
+  const { topics } = await generate(TopicsSchema, system, prompt, 8000);
+  return topics
+    .filter(t => t.title.trim())
+    .slice(0, count)
+    .map(t => ({ ...t, category: (CATEGORIES as readonly string[]).includes(t.category) ? t.category : 'Financial Basics' }));
+}
+
+export async function generateTopic(usedTitles: string[]): Promise<Topic> {
+  const [topic] = await generateTopics(usedTitles, 1);
+  if (!topic) throw new Error('The AI did not suggest a topic. Try again.');
+  return topic;
 }
