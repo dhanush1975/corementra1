@@ -171,10 +171,10 @@ export function seed(): Db {
     { id: "a7", name: "Victor Osei", uplineId: "a1", title: "Senior associate", email: "victor.osei@company.com", phone: "(214) 555-0106", joined: "2025-07-01", region: "East", status: "Active" },
     { id: "a8", name: "Nadia Kessler", uplineId: "a7", title: "Associate", email: "nadia.kessler@company.com", phone: "(214) 555-0107", joined: "2026-03-19", region: "South", status: "Active" },
   ];
-  return { events: ev, prospects: pr, clients: cl, purchases: pu, followUps: fu, feedback: fb, agents: ag };
+  return { events: ev, booths: [], prospects: pr, clients: cl, purchases: pu, followUps: fu, feedback: fb, agents: ag };
 }
 
-export const EMPTY_DB: Db = { events: [], prospects: [], clients: [], purchases: [], followUps: [], feedback: [], agents: [] };
+export const EMPTY_DB: Db = { events: [], booths: [], prospects: [], clients: [], purchases: [], followUps: [], feedback: [], agents: [] };
 
 const DB_KEY = "crm.model.v1";
 

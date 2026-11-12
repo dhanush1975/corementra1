@@ -1,9 +1,11 @@
-import { download, toCsv } from "../data";
+import { download, EMPTY_DB, toCsv } from "../data";
 import { DBtn, DCard } from "../ui";
 import type { Db, IncomeData } from "../types";
 
 const SCHEMA = [
   "events(event_id pk, name, starts_at, address, time_frame, expense, status, registered, attended)",
+  "booths(booth_id pk, name, starts_at, address, time_frame, expense, status)",
+  "booth_entries(entry_id pk, booth_id fk, prospect_id fk, name, email, phone, analysis_json, saved_at)",
   "prospects(prospect_id pk, event_id fk, agent_id, name, email, phone, source, financial_need, stage, last_contact, notes)",
   "follow_ups(follow_up_id pk, prospect_id fk, agent_id, subject, type, due_at, status, note)",
   "clients(client_id pk, prospect_id fk, name, email, phone, address, type[client|partner], agent_id, referral_source, since)",
@@ -15,6 +17,7 @@ const SCHEMA = [
 export function DataScreen({ db, income, commit, resetSeed, resetEmpty }: { db: Db; income: IncomeData; commit: (db: Db, msg?: string) => void; resetSeed: () => void; resetEmpty: () => void }) {
   const counts = [
     { label: "Events", n: db.events.length },
+    { label: "Booths", n: db.booths.length },
     { label: "Prospects", n: db.prospects.length },
     { label: "Follow-Ups", n: db.followUps.length },
     { label: "Clients & Partners", n: db.clients.length },
@@ -30,7 +33,8 @@ export function DataScreen({ db, income, commit, resetSeed, resetEmpty }: { db: 
     const fr = new FileReader();
     fr.onload = () => {
       try {
-        commit(JSON.parse(String(fr.result)), "Backup restored");
+        // Backups made before a table existed (e.g. booths) lack its key.
+        commit({ ...EMPTY_DB, ...JSON.parse(String(fr.result)) }, "Backup restored");
       } catch {
         commit(db, "That file could not be read as JSON");
       }

@@ -15,6 +15,32 @@ export interface EventRecord {
   completedAt?: string;
 }
 
+export interface BoothRecord {
+  id: string;
+  name: string;
+  date: string;
+  location: string;
+  timeFrame: string;
+  expense: number;
+  status: "Upcoming" | "Completed";
+  completedAt?: string;
+}
+
+// Written only by the public booth page (via the public-rsvp function);
+// the dashboard reads and deletes these. `analysis` is the JSON of
+// src/app/booth/fna.ts's Analysis.
+export interface BoothEntry {
+  id: string;
+  boothId: string;
+  prospectId?: string | null;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  analysis?: string | null;
+  savedAt?: string | null;
+  createdAt?: string;
+}
+
 export interface Prospect {
   id: string;
   name: string;
@@ -125,6 +151,7 @@ export interface PartnerIncome {
 
 export interface Db {
   events: EventRecord[];
+  booths: BoothRecord[];
   prospects: Prospect[];
   clients: Client[];
   purchases: Purchase[];
@@ -142,6 +169,7 @@ export interface IncomeData {
 export type ScreenId =
   | "dashboard"
   | "events"
+  | "booth"
   | "pipeline"
   | "followUps"
   | "calendar"

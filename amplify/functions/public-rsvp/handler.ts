@@ -79,12 +79,133 @@ async function registerForEvent(args: Record<string, unknown>) {
   return true;
 }
 
+// ---- Booths ------------------------------------------------------------
+
+// Mirrors src/app/booth/fna.ts. The analysis is rebuilt from these lists
+// rather than stored as sent, so nothing but known keys with clamped
+// numbers, Y/N answers and A/B/C choices ever reaches the table.
+const VALUE_KEYS = ['debt', 'inc', 'years', 'mortgage', 'eduCost', 'eduYears', 'kids', 'savings', 'stocks', 'realEstate', 'insurance', 'metals', 'crypto', 'k401'];
+const QUESTION_KEYS = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'];
+const OPTION_IDS = ['A', 'B', 'C'];
+const ANALYSIS_MAX = 8000;
+const MAX_AMOUNT = 1e11;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// The two people's labels ("Husband", "Wife", or real names).
+const PERSON_RE = /^[\p{L}\p{M}][\p{L}\p{M} .,'’-]{0,39}$/u;
+
+function cleanAnalysis(raw: string) {
+  if (raw.length > ANALYSIS_MAX) throw new Error('This analysis is too large to save.');
+  let a: any;
+  try { a = JSON.parse(raw); } catch { throw new Error('This analysis could not be read.'); }
+  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(MAX_AMOUNT, Math.max(0, Math.round(n))) : 0);
+  const person = (p: unknown, fallback: string) => {
+    const s = str(p).replace(/\s+/g, ' ');
+    return PERSON_RE.test(s) ? s : fallback;
+  };
+  const v: Record<string, number> = {};
+  for (const k of VALUE_KEYS) v[k] = num(a?.v?.[k]);
+  const ans: Record<string, string> = {};
+  for (const k of QUESTION_KEYS) if (a?.ans?.[k] === 'Y' || a?.ans?.[k] === 'N') ans[k] = a.ans[k];
+  const pick = (c: unknown) => (typeof c === 'string' && OPTION_IDS.includes(c) ? c : '');
+  return {
+    v,
+    p1: person(a?.p1, 'Person 1'),
+    p2: person(a?.p2, 'Person 2'),
+    r1: Math.min(100, num(a?.r1)),
+    ans,
+    booked: a?.booked === true,
+    choice: [pick(a?.choice?.[0]), pick(a?.choice?.[1])],
+  };
+}
+
+async function findBooth(id: string) {
+  if (!ID_RE.test(id)) return null;
+  const { data } = await client.models.Booth.get({ id });
+  return data ?? null;
+}
+
+async function getPublicBooth(args: Record<string, unknown>) {
+  const booth = await findBooth(str(args.id));
+  return booth ? { id: booth.id, name: booth.name, status: booth.status } : null;
+}
+
+async function saveBoothAnalysis(args: Record<string, unknown>) {
+  const name = str(args.name).replace(/\s+/g, ' ');
+  const email = str(args.email).toLowerCase();
+  const phone = str(args.phone);
+  const entryId = str(args.entryId);
+
+  if (!NAME_RE.test(name)) throw new Error('Please enter a valid name.');
+  if (email.length > 254 || !EMAIL_RE.test(email)) throw new Error('Please enter a valid email address.');
+  if (!PHONE_RE.test(phone)) throw new Error('Please enter a valid phone number.');
+  const analysis = JSON.stringify(cleanAnalysis(str(args.analysis)));
+
+  const booth = await findBooth(str(args.boothId));
+  if (!booth) throw new Error('This booth link is not valid.');
+  if (booth.status === 'Completed') throw new Error('This booth has closed.');
+  const savedAt = new Date().toISOString();
+
+  if (entryId) {
+    if (!UUID_RE.test(entryId)) throw new Error('This analysis could not be found.');
+    const { data: existing } = await client.models.BoothEntry.get({ id: entryId });
+    if (!existing || existing.boothId !== booth.id) throw new Error('This analysis could not be found.');
+    // Contact details are fixed once the entry exists; only the analysis moves.
+    const { errors } = await client.models.BoothEntry.update({ id: entryId, analysis, savedAt });
+    if (errors?.length) {
+      console.error('BoothEntry update failed', errors);
+      throw new Error('We could not save this analysis — please try again.');
+    }
+    // Booking a meeting from the page moves the lead on, as an event
+    // registration does — but never back from a later stage.
+    if (JSON.parse(analysis).booked && existing.prospectId) {
+      const { data: prospect } = await client.models.Prospect.get({ id: existing.prospectId });
+      if (prospect?.stage === 'NEW') {
+        const { errors: stageErrors } = await client.models.Prospect.update({ id: prospect.id, stage: 'APPOINTMENT', lastContact: savedAt.slice(0, 10) });
+        if (stageErrors?.length) console.error('Prospect stage update failed', stageErrors);
+      }
+    }
+    return entryId;
+  }
+
+  // As with event registrations, the visitor decides only the contact
+  // details; how the lead is filed is fixed here.
+  const prospectId = randomUUID();
+  const { errors: prospectErrors } = await client.models.Prospect.create({
+    id: prospectId,
+    name,
+    email,
+    phone,
+    eventId: '',
+    source: 'Booth',
+    need: NEEDS[0],
+    agent: '',
+    stage: 'NEW',
+    plan: 'Not decided yet',
+    lastContact: savedAt.slice(0, 10),
+    notes: `Financial needs analysis at ${booth.name}.`,
+    kind: 'Prospect',
+  });
+  if (prospectErrors?.length) {
+    console.error('Prospect create failed', prospectErrors);
+    throw new Error('We could not save your details — please try again.');
+  }
+  const id = randomUUID();
+  const { errors } = await client.models.BoothEntry.create({ id, boothId: booth.id, prospectId, name, email, phone, analysis, savedAt });
+  if (errors?.length) {
+    console.error('BoothEntry create failed', errors);
+    throw new Error('We could not save your details — please try again.');
+  }
+  return id;
+}
+
 // Amplify's function resolver passes the operation name as a top-level
 // `fieldName` (there is no AppSync-style `info` object on this event).
 export const handler = async (event: { fieldName: string; arguments: Record<string, unknown> }) => {
   switch (event.fieldName) {
     case 'getPublicEvent': return getPublicEvent(event.arguments);
     case 'registerForEvent': return registerForEvent(event.arguments);
+    case 'getPublicBooth': return getPublicBooth(event.arguments);
+    case 'saveBoothAnalysis': return saveBoothAnalysis(event.arguments);
     default: throw new Error('Unsupported operation.');
   }
 };

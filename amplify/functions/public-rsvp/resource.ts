@@ -1,7 +1,8 @@
 import { defineFunction } from '@aws-amplify/backend';
 
-// The only thing an anonymous visitor can reach: backs the two public
-// operations (getPublicEvent / registerForEvent) declared in
+// The only thing an anonymous visitor can reach: backs the public
+// operations (getPublicEvent / registerForEvent, getPublicBooth /
+// saveBoothAnalysis) declared in
 // data/resource.ts. It validates every field and decides server-side what
 // gets stored, so the public API key never has direct access to a model.
 export const publicRsvp = defineFunction({

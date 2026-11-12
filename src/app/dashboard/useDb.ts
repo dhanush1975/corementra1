@@ -6,6 +6,7 @@ import type { Db } from "./types";
 
 const MODELS = {
   events: client.models.Event,
+  booths: client.models.Booth,
   prospects: client.models.Prospect,
   clients: client.models.Client,
   purchases: client.models.Purchase,

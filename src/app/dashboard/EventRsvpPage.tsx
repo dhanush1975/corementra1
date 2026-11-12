@@ -8,7 +8,7 @@ type Status = "loading" | "notFound" | "loadError" | "completed" | "form" | "sch
 
 const CALENDLY_URL = "https://calendly.com/amit-arakeswara/amit-arakeswara-s-calendar";
 
-const CALENDLY_ORIGIN = new URL(CALENDLY_URL).origin;
+export const CALENDLY_ORIGIN = new URL(CALENDLY_URL).origin;
 
 // Same rules the server enforces (amplify/functions/public-rsvp/handler.ts).
 // Checked here first so nobody books a time and only then finds out their
@@ -22,7 +22,7 @@ const NOTES_MAX = 1000;
 // same one the signed-in dashboard keeps its session on. embed_domain /
 // embed_type are what tell Calendly it's embedded, which is what makes it
 // post booking events back to this window.
-function calendlyEmbedUrl(prefill: { name: string; email: string; phone: string }) {
+export function calendlyEmbedUrl(prefill: { name: string; email: string; phone: string }) {
   const url = new URL(CALENDLY_URL);
   url.searchParams.set("embed_domain", window.location.host);
   url.searchParams.set("embed_type", "Inline");

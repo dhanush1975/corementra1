@@ -42,6 +42,7 @@ import {
 import { DashboardApp } from "./dashboard/DashboardApp";
 import { AuthGate } from "./dashboard/AuthGate";
 import { EventRsvpPage } from "./dashboard/EventRsvpPage";
+import { BoothAnalysisPage } from "./booth/BoothAnalysisPage";
 import { BlogPage } from "./blog/BlogPage";
 import { BlogPostPage } from "./blog/BlogPostPage";
 
@@ -269,6 +270,7 @@ export default function App() {
       <Routes>
         <Route path="/dashboard/*" element={<AuthGate><DashboardApp /></AuthGate>} />
         <Route path="/events/:eventId" element={<EventRsvpPage />} />
+        <Route path="/booth/:boothId" element={<BoothAnalysisPage />} />
         <Route path="/*" element={<Layout />} />
       </Routes>
     </BrowserRouter>

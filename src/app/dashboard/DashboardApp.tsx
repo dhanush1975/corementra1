@@ -8,6 +8,7 @@ import { diffAndSync, listAll } from "./sync";
 import type { IncomeData, PartnerIncome, Product, Sale, ScreenId } from "./types";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { EventsScreen } from "./screens/EventsScreen";
+import { BoothScreen } from "./screens/BoothScreen";
 import { PipelineScreen } from "./screens/PipelineScreen";
 import { FollowUpsScreen } from "./screens/FollowUpsScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
@@ -22,6 +23,7 @@ import { DataScreen } from "./screens/DataScreen";
 const NAV: { id: ScreenId; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "M4 4h6v6H4zM14 4h6v6h-6zM14 14h6v6h-6zM4 14h6v6H4z" },
   { id: "events", label: "Events", icon: "M4 6h16v14H4zM8 3v4M16 3v4M4 11h16" },
+  { id: "booth", label: "Booth", icon: "M3 9l1.5-5h15L21 9M3 9h18M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M5 12v8h14v-8M10 20v-5h4v5" },
   { id: "pipeline", label: "Pipeline", icon: "M4 6h16M7 12h10M10 18h4" },
   { id: "followUps", label: "Follow-Ups", icon: "M20 12a8 8 0 1 1-4.4-7.1M9 12l2.6 2.6L20 6" },
   { id: "calendar", label: "Calendar", icon: "M7 3v4M17 3v4M4 9h16M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" },
@@ -166,6 +168,7 @@ export function DashboardApp() {
         <div className="px-5 lg:px-8 py-6">
           {screen === "dashboard" && <DashboardScreen db={db} income={income} goFollowUps={() => go("followUps")} />}
           {screen === "events" && <EventsScreen db={db} commit={commit} />}
+          {screen === "booth" && <BoothScreen db={db} commit={commit} />}
           {screen === "pipeline" && <PipelineScreen db={db} commit={commit} />}
           {screen === "followUps" && <FollowUpsScreen db={db} commit={commit} />}
           {screen === "calendar" && <CalendarScreen db={db} commit={commit} />}

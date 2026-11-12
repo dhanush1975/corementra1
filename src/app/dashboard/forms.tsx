@@ -23,6 +23,14 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
     { k: "registered", l: "Registered", t: "number" },
     { k: "attended", l: "Attended", t: "number" },
   ],
+  booths: [
+    { k: "name", l: "Booth name", t: "text", span2: true },
+    { k: "date", l: "Date", t: "date" },
+    { k: "timeFrame", l: "Time frame", t: "text" },
+    { k: "location", l: "Address / location", t: "text", span2: true },
+    { k: "status", l: "Status", t: "select", options: ["Upcoming", "Completed"] },
+    { k: "expense", l: "Booth expense ($)", t: "number" },
+  ],
   prospects: [
     { k: "name", l: "Full name", t: "text" },
     { k: "kind", l: "Is this a prospect or a client?", t: "select", options: [...KINDS] },
@@ -87,6 +95,7 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
 
 export const ENTITY_META: Record<string, { singular: string; plural: string }> = {
   events: { singular: "event", plural: "Events" },
+  booths: { singular: "booth", plural: "Booths" },
   prospects: { singular: "contact", plural: "Prospects" },
   followUps: { singular: "follow-up", plural: "Follow-Ups" },
   clients: { singular: "record", plural: "Clients" },

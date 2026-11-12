@@ -30,6 +30,33 @@ const schema = a.schema({
     completedAt: a.string(),
   }).authorization(allow => [allow.authenticated()]),
 
+  // A booth the agent staffs. Mirrors Event: each one has a public link
+  // (/booth/:id) to the financial needs analysis page.
+  Booth: a.model({
+    name: a.string().required(),
+    date: a.string().required(),
+    location: a.string(),
+    timeFrame: a.string(),
+    expense: a.float(),
+    status: a.string(),
+    completedAt: a.string(),
+  }).authorization(allow => [allow.authenticated()]),
+
+  // One financial needs analysis filled in at a booth. Only the public-rsvp
+  // function writes these (saveBoothAnalysis below), so the dashboard can
+  // read and delete them but not edit what the visitor entered. `analysis`
+  // is the JSON of src/app/booth/fna.ts's Analysis, rebuilt field by field
+  // by the function before it is stored.
+  BoothEntry: a.model({
+    boothId: a.string().required(),
+    prospectId: a.string(),
+    name: a.string().required(),
+    email: a.string(),
+    phone: a.string(),
+    analysis: a.string(),
+    savedAt: a.string(),
+  }).authorization(allow => [allow.authenticated().to(['read', 'delete'])]),
+
   // No model is reachable with the public API key. The public
   // event-registration page (src/app/dashboard/EventRsvpPage.tsx) goes
   // through the two custom operations at the bottom of this schema, which
@@ -196,6 +223,31 @@ const schema = a.schema({
       notes: a.string(),
     })
     .returns(a.boolean())
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(publicRsvp)),
+
+  // The public surface for booths, run by the same function: look up one
+  // booth's name/status, and save the analysis filled in there.
+  getPublicBooth: a.query()
+    .arguments({ id: a.string().required() })
+    .returns(a.ref('PublicEvent'))
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(publicRsvp)),
+
+  // Without entryId it starts a new analysis (and its Prospect) and returns
+  // the new entry's id; with one it overwrites that entry's analysis. The
+  // id is a server-made UUID that is never listed publicly, so only the
+  // page that started an entry can update it.
+  saveBoothAnalysis: a.mutation()
+    .arguments({
+      boothId: a.string().required(),
+      entryId: a.string(),
+      name: a.string().required(),
+      email: a.string().required(),
+      phone: a.string().required(),
+      analysis: a.string().required(),
+    })
+    .returns(a.string())
     .authorization(allow => [allow.publicApiKey()])
     .handler(a.handler.function(publicRsvp)),
 
