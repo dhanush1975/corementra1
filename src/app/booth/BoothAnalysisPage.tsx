@@ -3,9 +3,10 @@ import { useParams } from "react-router";
 import logo from "@/imports/logo/corementra-logo-trimmed.png";
 import { client } from "../dashboard/client";
 import { CALENDLY_ORIGIN, calendlyEmbedUrl } from "../dashboard/EventRsvpPage";
+import { ScaleSlider } from "./ScaleSlider";
 import {
-  ASKED, ASSETS, COUNT_KEYS, QUESTIONS, computeAnalysis, emptyAnalysis, fmtMoney,
-  type Analysis, type QuestionKey, type ValueKey, type YesNo,
+  ASKED, ASSETS, COUNT_KEYS, QUESTIONS, computeAnalysis, emptyAnalysis, fmtMoney, isScale,
+  type Analysis, type Answer, type QuestionKey, type ValueKey, type YesNo,
 } from "./fna";
 
 // Public page behind each booth's link (/booth/:boothId), used on the
@@ -215,7 +216,7 @@ export function BoothAnalysisPage() {
       setA(x => ({ ...x, v: { ...x.v, [k]: n } }));
     },
   });
-  const answer = (k: QuestionKey, val: YesNo) => setA(x => ({ ...x, ans: { ...x.ans, [k]: val } }));
+  const answer = (k: QuestionKey, val: Answer) => setA(x => ({ ...x, ans: { ...x.ans, [k]: val } }));
   const dirty = JSON.stringify(a) !== s.savedJson;
   const savedLabel = saving ? "Saving…"
     : s.savedAt ? (dirty ? "Unsaved changes" : "Saved " + new Date(s.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))
@@ -230,11 +231,18 @@ export function BoothAnalysisPage() {
       ))}
     </div>
   );
+  const scaleSlider = (k: QuestionKey) => (
+    <ScaleSlider
+      value={a.ans[k] ? Number(a.ans[k]) : null}
+      onChange={n => answer(k, String(n) as Answer)}
+      label={QUESTIONS.find(q => q.key === k)!.text}
+    />
+  );
   const question = (num: string, k: QuestionKey, last?: boolean) => (
     <div key={k} className={"fna-q" + (last ? " last" : "")}>
       <span className="fna-num">{num}</span>
       <span className="fna-q-text">{QUESTIONS.find(q => q.key === k)!.text}</span>
-      {yesNoButtons(k)}
+      {isScale(k) ? scaleSlider(k) : yesNoButtons(k)}
     </div>
   );
   const saveErrorLine = saveError ? <p className="fna-error" style={{ textAlign: "center" }}>{saveError}</p> : null;
@@ -575,6 +583,25 @@ const STYLES = `
   .fna-num { width: 32px; height: 32px; border-radius: 10px; background: #efeeff; color: #5b54f0; display: grid; place-items: center; font-weight: 700; font-size: 14px; }
   .fna-q-text { font-size: 16px; font-weight: 500; text-wrap: pretty; }
   .fna-yn { display: flex; gap: 8px; }
+  .fna-slider { grid-column: 2 / -1; user-select: none; -webkit-user-select: none; }
+  .fna-slider-rail { position: relative; height: 108px; touch-action: none; }
+  .fna-slider-num { all: unset; position: absolute; top: 82px; min-width: 22px; text-align: center; font-size: 14px; font-weight: 700; cursor: pointer; font-variant-numeric: tabular-nums; }
+  .fna-slider-track, .fna-slider-fill { position: absolute; top: 58px; height: 8px; border-radius: 99px; }
+  .fna-slider-track { left: 14px; right: 14px; background: #ececf6; }
+  .fna-slider-fill { left: 14px; background: linear-gradient(90deg, #a5a3ff, #5b54f0); box-shadow: 0 4px 14px rgba(91,84,240,.35); }
+  .fna-slider-tick { position: absolute; top: 60px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; }
+  .fna-slider-thumb { position: absolute; top: 62px; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; background: #fff; border: 3px solid #5b54f0; box-shadow: 0 6px 16px rgba(91,84,240,.35); pointer-events: none; }
+  .fna-slider:not(.answered) .fna-slider-thumb { border-color: #b9b7f7; }
+  .fna-slider-pulse { position: absolute; inset: -3px; border-radius: 50%; background: #5b54f0; z-index: -1; }
+  .fna-slider-bubble { position: absolute; bottom: calc(100% + 10px); left: 50%; min-width: 38px; height: 32px; padding: 0 8px; border-radius: 10px; background: #12121c; color: #fff; font-weight: 800; font-size: 15px; display: grid; place-items: center; overflow: hidden; box-shadow: 0 6px 16px rgba(18,18,28,.2); }
+  .fna-slider-bubble span { grid-area: 1 / 1; }
+  .fna-slider:not(.answered) .fna-slider-bubble { background: #ececf6; color: #7b7f93; box-shadow: none; }
+  .fna-slider input { position: absolute; left: 0; top: 44px; width: 100%; height: 36px; margin: 0; opacity: 0; cursor: grab; -webkit-appearance: none; appearance: none; background: transparent; }
+  .fna-slider input:active { cursor: grabbing; }
+  .fna-slider input::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 36px; }
+  .fna-slider input::-moz-range-thumb { width: 28px; height: 36px; border: 0; }
+  .fna-slider-rail:has(input:focus-visible) .fna-slider-thumb { outline: 3px solid rgba(91,84,240,.35); outline-offset: 3px; }
+  .fna-slider-ends { display: flex; justify-content: space-between; gap: 12px; margin-top: 2px; font-size: 12px; color: #9a9cad; }
   .fna-toggle { cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; min-width: 64px; padding: 10px 16px; border-radius: 12px; border: 1px solid #e4e4f0; background: #fff; color: #12121c; white-space: nowrap; }
   .fna-toggle.on { background: #5b54f0; color: #fff; border-color: #5b54f0; }
   @media (max-width: 720px) {

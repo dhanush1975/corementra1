@@ -86,6 +86,9 @@ async function registerForEvent(args: Record<string, unknown>) {
 // numbers, Y/N answers and A/B/C choices ever reaches the table.
 const VALUE_KEYS = ['debt', 'inc', 'years', 'mortgage', 'eduCost', 'eduYears', 'kids', 'savings', 'stocks', 'realEstate', 'insurance', 'metals', 'crypto', 'k401'];
 const QUESTION_KEYS = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'];
+// Answered on a 1–10 scale ("1"…"10") instead of Y/N.
+const SCALE_KEYS = ['q3'];
+const SCALE_RE = /^(10|[1-9])$/;
 const OPTION_IDS = ['A', 'B', 'C'];
 const ANALYSIS_MAX = 8000;
 const MAX_AMOUNT = 1e11;
@@ -105,7 +108,11 @@ function cleanAnalysis(raw: string) {
   const v: Record<string, number> = {};
   for (const k of VALUE_KEYS) v[k] = num(a?.v?.[k]);
   const ans: Record<string, string> = {};
-  for (const k of QUESTION_KEYS) if (a?.ans?.[k] === 'Y' || a?.ans?.[k] === 'N') ans[k] = a.ans[k];
+  for (const k of QUESTION_KEYS) {
+    const val = a?.ans?.[k];
+    if (typeof val !== 'string') continue;
+    if (SCALE_KEYS.includes(k) ? SCALE_RE.test(val) : val === 'Y' || val === 'N') ans[k] = val;
+  }
   const pick = (c: unknown) => (typeof c === 'string' && OPTION_IDS.includes(c) ? c : '');
   return {
     v,

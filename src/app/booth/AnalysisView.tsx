@@ -42,8 +42,8 @@ export function AnalysisView({ analysis: a }: { analysis: Analysis }) {
           return (
             <div key={q.key} className="flex items-start justify-between gap-3 py-2 border-b border-[#f4f5f7] last:border-0">
               <span className="text-[#475467]"><span className="text-[#98a2b3] mr-1.5">{String(i + 1).padStart(2, "0")}</span>{q.text}</span>
-              <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${ans === "Y" ? "bg-[#e7f4ec] text-[#14683f]" : ans === "N" ? "bg-[#faeceb] text-[#a4372f]" : "bg-[#f2f4f7] text-[#98a2b3]"}`}>
-                {ans === "Y" ? "Yes" : ans === "N" ? "No" : "—"}
+              <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${ans === "Y" ? "bg-[#e7f4ec] text-[#14683f]" : ans === "N" ? "bg-[#faeceb] text-[#a4372f]" : ans ? "bg-[#f1eefb] text-[#5341a6]" : "bg-[#f2f4f7] text-[#98a2b3]"}`}>
+                {ans === "Y" ? "Yes" : ans === "N" ? "No" : ans ? `${ans} / 10` : "—"}
               </span>
             </div>
           );

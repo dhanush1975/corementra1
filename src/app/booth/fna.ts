@@ -27,8 +27,9 @@ export const ASSETS: [ValueKey, string][] = [
 
 export const QUESTIONS = [
   { key: "q1", text: "Do you agree that this is an important problem to solve?" },
-  { key: "q2", text: "If this is not solved, where will the mortgage and bills come from?" },
-  { key: "q3", text: "How important is it for you to solve it?" },
+  { key: "q2", text: "If your family lost your income, would your savings cover the mortgage and bills for the next 10 years?" },
+  // Answered 1–10 rather than Yes/No.
+  { key: "q3", text: "On a scale of 1 to 10, how important is it for you to solve it?", scale: true },
   { key: "q4", text: "Do you agree protecting your family is important?" },
   { key: "q5", text: "The plan will pay off mortgage and replace the income if something happens. Does this solve the problem we talked about?" },
   { key: "q6", text: "Is there any advantage for you to wait?" },
@@ -39,6 +40,10 @@ export type QuestionKey = typeof QUESTIONS[number]["key"];
 export const ASKED: QuestionKey[] = ["q1", "q2", "q3", "q4"];
 
 export type YesNo = "Y" | "N";
+// A scale question's answer, stored as "1"…"10".
+export type ScaleValue = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10";
+export type Answer = YesNo | ScaleValue;
+export const isScale = (k: QuestionKey) => !!QUESTIONS.find(q => q.key === k && "scale" in q);
 export type OptionId = "A" | "B" | "C";
 export const OPTION_IDS: OptionId[] = ["A", "B", "C"];
 
@@ -48,7 +53,7 @@ export interface Analysis {
   p2: string;
   // Person 1's income share in percent; person 2 has the rest.
   r1: number;
-  ans: Partial<Record<QuestionKey, YesNo>>;
+  ans: Partial<Record<QuestionKey, Answer>>;
   booked: boolean;
   // Chosen option per person: [person 1, person 2]; "" = none yet.
   choice: [OptionId | "", OptionId | ""];
