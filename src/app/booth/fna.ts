@@ -27,7 +27,7 @@ export const ASSETS: [ValueKey, string][] = [
 
 export const QUESTIONS = [
   { key: "q1", text: "Do you agree that this is an important problem to solve?" },
-  { key: "q2", text: "If your family lost your income, would your savings cover the mortgage and bills for the next 10 years?" },
+  { key: "q2", text: "If your family lost your income, would your current savings cover the mortgage and bills for at least the next 10 years? If not, do you think this is a problem to solve for?" },
   // Answered 1–10 rather than Yes/No.
   { key: "q3", text: "On a scale of 1 to 10, how important is it for you to solve it?", scale: true },
   { key: "q4", text: "Do you agree protecting your family is important?" },

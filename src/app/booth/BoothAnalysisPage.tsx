@@ -40,6 +40,9 @@ const freshState = (): PageState => ({ entryId: "", step: 0, client: { name: "",
 // The analysis in progress survives a reload of the booth's device. It is
 // per booth, and cleared by "New client".
 const storageKey = (boothId: string) => "fna-booth-" + boothId;
+// What saveBoothAnalysis says when the entry this page remembers is gone
+// (deleted from the dashboard). Mirrors the handler's message.
+const ENTRY_GONE = "This analysis could not be found.";
 function loadState(boothId: string): PageState {
   try {
     const raw = localStorage.getItem(storageKey(boothId));
@@ -62,6 +65,10 @@ export function BoothAnalysisPage() {
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  // Kept apart from `saving`/`saveError` so the booking messages only show
+  // for the save that follows a real booking, not for the routine save made
+  // on arriving at the booking step.
+  const [booking, setBooking] = useState<"idle" | "saving" | "failed">("idle");
   const stateRef = useRef(s);
   // The analysis JSON of the last save that failed, so auto-save doesn't
   // retry it in a loop (and trip the API's rate limit) — the next change does.
@@ -95,10 +102,17 @@ export function BoothAnalysisPage() {
     setSaving(true);
     setSaveError("");
     try {
-      const res = await client.mutations.saveBoothAnalysis(
-        { boothId, entryId: cur.entryId || undefined, ...cur.client, analysis },
+      const send = (entryId: string) => client.mutations.saveBoothAnalysis(
+        { boothId, entryId: entryId || undefined, ...cur.client, analysis },
         { authMode: "apiKey" },
       );
+      let res = await send(cur.entryId);
+      // The entry was deleted while this page still held it: save the
+      // analysis as a new entry rather than failing on every save.
+      if (cur.entryId && res.errors?.[0]?.message === ENTRY_GONE) {
+        stateRef.current = { ...stateRef.current, entryId: "" };
+        res = await send("");
+      }
       if (res.errors?.length || !res.data) {
         failedJsonRef.current = analysis;
         setSaveError(res.errors?.[0]?.message || "We couldn't save this analysis — please try again.");
@@ -129,6 +143,7 @@ export function BoothAnalysisPage() {
 
   const setA = (fn: (a: Analysis) => Analysis) => setS(prev => ({ ...prev, a: fn(prev.a) }));
   const go = (step: Step) => {
+    setBooking("idle");
     setS(prev => ({ ...prev, step }));
     window.scrollTo({ top: 0, behavior: "smooth" });
     // Moving between steps is a natural checkpoint, so save on the way.
@@ -167,7 +182,10 @@ export function BoothAnalysisPage() {
   const confirmBooking = async () => {
     stateRef.current = { ...stateRef.current, a: { ...stateRef.current.a, booked: true } };
     setA(x => ({ ...x, booked: true }));
-    if (await save()) setS(prev => ({ ...prev, step: 5 }));
+    setBooking("saving");
+    const ok = await save();
+    setBooking(ok ? "idle" : "failed");
+    if (ok) setS(prev => ({ ...prev, step: 5 }));
   };
   useEffect(() => {
     if (s.step !== 4) return;
@@ -180,6 +198,7 @@ export function BoothAnalysisPage() {
   }, [s.step]);
 
   const resetForNext = () => {
+    setBooking("idle");
     setS(freshState());
     setFormError("");
     setSaveError("");
@@ -195,6 +214,7 @@ export function BoothAnalysisPage() {
     const dirty = s.step > 0 && JSON.stringify(s.a) !== s.savedJson;
     if (s.step === 5) { resetForNext(); return; }
     if (s.step > 0 && !window.confirm(dirty ? "This analysis has unsaved changes. Start a new client anyway?" : "Start a new client? This analysis is saved and the form will clear.")) return;
+    setBooking("idle");
     setS(freshState());
     setFormError("");
     setSaveError("");
@@ -450,8 +470,9 @@ export function BoothAnalysisPage() {
                   <div className="fna-card" style={{ padding: 0, overflow: "hidden" }}>
                     <iframe title="Pick a time to meet" src={calendlySrc} style={{ display: "block", width: "100%", minWidth: 280, height: 700, border: 0 }} />
                   </div>
-                  {saving && <p className="fna-soft" style={{ textAlign: "center" }}>Saving your booking…</p>}
-                  {saveError && (
+                  {booking === "saving" && <p className="fna-soft" style={{ textAlign: "center" }}>Saving your booking…</p>}
+                  {booking !== "failed" && saveErrorLine}
+                  {booking === "failed" && (
                     <div style={{ textAlign: "center" }}>
                       <p className="fna-error">Your time was booked, but we couldn't save it. {saveError}</p>
                       <button type="button" className="fna-btn-secondary" onClick={confirmBooking} disabled={saving}>Try again</button>
