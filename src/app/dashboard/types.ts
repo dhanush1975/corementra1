@@ -174,7 +174,6 @@ export type ScreenId =
   | "followUps"
   | "calendar"
   | "clients"
-  | "applications"
   | "products"
   | "income"
   | "agents"

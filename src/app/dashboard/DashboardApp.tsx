@@ -13,7 +13,6 @@ import { PipelineScreen } from "./screens/PipelineScreen";
 import { FollowUpsScreen } from "./screens/FollowUpsScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
 import { ClientsScreen } from "./screens/ClientsScreen";
-import { ApplicationsScreen } from "./screens/ApplicationsScreen";
 import { ProductsScreen } from "./screens/ProductsScreen";
 import { IncomeScreen } from "./screens/IncomeScreen";
 import { AgentsScreen } from "./screens/AgentsScreen";
@@ -29,7 +28,6 @@ const NAV: { id: ScreenId; label: string; icon: string }[] = [
   { id: "followUps", label: "Follow-Ups", icon: "M20 12a8 8 0 1 1-4.4-7.1M9 12l2.6 2.6L20 6" },
   { id: "calendar", label: "Calendar", icon: "M7 3v4M17 3v4M4 9h16M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" },
   { id: "clients", label: "Clients", icon: "M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M12 4a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7M17 13.5a4.5 4.5 0 0 1 4 4.5v1" },
-  { id: "applications", label: "Applications", icon: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4" },
   { id: "products", label: "Products", icon: "M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10" },
   { id: "income", label: "Income", icon: "M12 3v18M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.1-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3.3-2 3.2-4.5 3.2-4.5-1.1-4.5-3" },
   { id: "agents", label: "Agents", icon: "M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
@@ -175,7 +173,6 @@ export function DashboardApp() {
           {screen === "followUps" && <FollowUpsScreen db={db} commit={commit} />}
           {screen === "calendar" && <CalendarScreen db={db} commit={commit} />}
           {screen === "clients" && <ClientsScreen db={db} income={income} commit={commit} />}
-          {screen === "applications" && <ApplicationsScreen db={db} />}
           {screen === "products" && <ProductsScreen products={products} setProducts={updateProducts} />}
           {screen === "income" && <IncomeScreen db={db} products={products} income={income} setIncome={updateIncome} />}
           {screen === "agents" && <AgentsScreen db={db} income={income} commit={commit} />}

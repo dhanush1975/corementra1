@@ -100,18 +100,6 @@ const schema = a.schema({
     birthday: a.string(),
   }).authorization(allow => [allow.authenticated()]),
 
-  // A life insurance application questionnaire the agent fills in for a
-  // client (primary insured, beneficiaries, bank, health, optional spouse,
-  // H1B documents). Holds SSNs and bank numbers, so it is never public and
-  // is kept out of the dashboard's JSON backup. `data` is the JSON of
-  // src/app/dashboard/applications/questionnaire.ts's Questionnaire.
-  Application: a.model({
-    name: a.string().required(),
-    clientId: a.string(),
-    status: a.string(),
-    data: a.string(),
-  }).authorization(allow => [allow.authenticated()]),
-
   Purchase: a.model({
     clientId: a.string().required(),
     product: a.string().required(),
