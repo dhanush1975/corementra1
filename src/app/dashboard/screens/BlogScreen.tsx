@@ -283,7 +283,7 @@ export function BlogScreen() {
   };
 
   // When the last queued topic is used, top the queue up straight away
-  // from the site-based list. (Once that list runs out, the daily job adds
+  // from the site-based list. (Once that list runs out, the automatic job adds
   // AI-suggested topics instead.) One failed attempt stops it retrying.
   const autoFillFailed = useRef(false);
   useEffect(() => {
@@ -453,7 +453,7 @@ export function BlogScreen() {
         <div className="text-xs uppercase tracking-wider text-[#98a2b3]">Content</div>
         <h2 className="text-2xl font-black mt-0.5">Blog</h2>
         <p className="text-sm text-[#667085] mt-1">
-          One article is written and published automatically every day at 18:00 UTC. Anything you generate here stays a
+          One article is written and published automatically every 5 days at 18:00 UTC. Anything you generate here stays a
           draft until you review it and publish it.
         </p>
       </div>
@@ -489,7 +489,7 @@ export function BlogScreen() {
               <h4 className="text-base font-bold">Recent articles</h4>
               <DBtn variant="ghost" onClick={() => setTab("articles")}>View all</DBtn>
             </div>
-            {live.length === 0 ? <EmptyState>No articles yet. Generate one, or wait for the daily article.</EmptyState> : (
+            {live.length === 0 ? <EmptyState>No articles yet. Generate one, or wait for the next automatic article.</EmptyState> : (
               <div className="flex flex-col divide-y divide-[#f0f0f0]">
                 {live.slice(0, 6).map(a => (
                   <button key={a.slug} onClick={() => setViewing(a)} className="flex items-center gap-3 py-3 text-left hover:bg-[#fafafa] -mx-2 px-2 rounded-lg transition-colors">
@@ -606,7 +606,7 @@ export function BlogScreen() {
 
           {queue.length === 0 ? (
             <DCard className="p-5">
-              <EmptyState>The queue is empty. New topics are added automatically with the next daily article; you can also add one above.</EmptyState>
+              <EmptyState>The queue is empty. New topics are added automatically with the next automatic article; you can also add one above.</EmptyState>
             </DCard>
           ) : (
             <>
@@ -635,7 +635,7 @@ export function BlogScreen() {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-[#98a2b3]">When this queue runs out it refills itself with 12 new topics. The daily automatic article picks its own topic and leaves these for you.</p>
+              <p className="text-xs text-[#98a2b3]">When this queue runs out it refills itself with 12 new topics. The automatic article picks its own topic and leaves these for you.</p>
             </>
           )}
         </>

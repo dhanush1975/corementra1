@@ -268,12 +268,12 @@ const schema = a.schema({
   // articles can never share a URL — a soft-deleted one still holds its
   // slug. The signed-in dashboard can read rows but not write them: every
   // write goes through the blog-api function (publishArticle /
-  // removeArticle / restoreArticle below) or the daily blog-cron function.
+  // removeArticle / restoreArticle below) or the scheduled blog-cron function.
   Article: a.model({
     slug: a.string().required(),
     title: a.string().required(),
     // The topic the article was written from. The AI picks its own title,
-    // so this is what stops the daily job choosing the same topic twice.
+    // so this is what stops the automatic job choosing the same topic twice.
     topic: a.string(),
     category: a.string(),
     excerpt: a.string(),

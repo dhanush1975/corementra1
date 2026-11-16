@@ -11,6 +11,13 @@ Amplify.configure(resourceConfig, libraryOptions);
 const client = generateClient<Schema>();
 
 const MAX_ATTEMPTS = 3;
+// Publish one article every this many days. The schedule still fires daily
+// at 18:00 UTC; it just does nothing on the days in between. Counting whole
+// days since 1970 keeps the gap exactly 5 days across month ends and
+// redeploys (EventBridge's "*/5" day-of-month restarts each month, and a
+// rate(5 days) schedule restarts from every deploy).
+const EVERY_DAYS = 5;
+const isPublishDay = (now = new Date()) => Math.floor(now.getTime() / 86_400_000) % EVERY_DAYS === 0;
 // How many topics go into the dashboard queue when it runs dry. Matches
 // SUGGEST_BATCH in src/app/dashboard/screens/BlogScreen.tsx.
 const QUEUE_REFILL = 12;
@@ -31,7 +38,7 @@ async function loadExisting() {
 }
 
 // Topics waiting on the dashboard's Queue tab. Those are for a person to
-// write and review, so the daily article leaves them alone.
+// write and review, so the automatic article leaves them alone.
 async function loadQueue() {
   const rows: { title: string }[] = [];
   let nextToken: string | null | undefined;
@@ -73,6 +80,11 @@ async function refillQueue(used: Set<string>, slugs: Set<string>, usedTitles: st
 }
 
 export const handler = async () => {
+  if (!isPublishDay()) {
+    console.log(`Not a publish day (one article every ${EVERY_DAYS} days), skipping`);
+    return { statusText: 'skipped' };
+  }
+
   const existing = await loadExisting();
   const slugs = new Set(existing.map(a => a.slug));
   const usedTitles = existing.map(a => a.title);
@@ -80,7 +92,7 @@ export const handler = async () => {
   const tried = new Set<string>();
 
   // The queue is a convenience; a problem with it must never stop the
-  // day's article from being written.
+  // scheduled article from being written.
   let queuedTitles: string[] = [];
   try {
     queuedTitles = (await loadQueue()).map(q => q.title);

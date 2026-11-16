@@ -1,6 +1,7 @@
 import { defineFunction, secret } from '@aws-amplify/backend';
 
-// Writes and publishes one article a day. This is the only path that puts an
+// Writes and publishes one article every 5 days (fires daily; the handler
+// skips the days in between — see EVERY_DAYS in cron-handler.ts). This is the only path that puts an
 // AI-written article live without a person reviewing it first. It has no
 // HTTP endpoint: only its EventBridge schedule can invoke it.
 export const blogCron = defineFunction({

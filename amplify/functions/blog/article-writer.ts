@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod/v4';
 
-// The one AI writer. Both the daily blog-cron function and the dashboard's
+// The one AI writer. Both the scheduled blog-cron function and the dashboard's
 // "Generate draft" (blog-writer function) call writeArticle(), so there is a
 // single prompt and a single schema.
 

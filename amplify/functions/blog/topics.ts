@@ -2,7 +2,7 @@
 // service pages (life insurance, retirement, estate planning, high-net-worth
 // planning, professional careers) and the questions those pages raise.
 //
-// Plain data with no imports, because two places use it: the daily blog-cron
+// Plain data with no imports, because two places use it: the scheduled blog-cron
 // function picks from it, and the dashboard's Queue tab offers it as
 // "suggested topics". Categories must be ones listed in CATEGORIES
 // (article-writer.ts) / BLOG_CATEGORIES (src/app/blog/shared.ts).
