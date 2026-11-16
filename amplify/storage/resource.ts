@@ -7,5 +7,8 @@ export const storage = defineStorage({
   name: 'corementraFlyers',
   access: allow => ({
     'flyers/*': [allow.authenticated.to(['read', 'write', 'delete'])],
+    // Documents attached to a client application (H1B stamp, I-797, W-9),
+    // under applications/<application id>/.
+    'applications/*': [allow.authenticated.to(['read', 'write', 'delete'])],
   }),
 });
