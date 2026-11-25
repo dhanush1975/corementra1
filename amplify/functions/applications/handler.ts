@@ -219,7 +219,7 @@ async function submitApplication(args: Record<string, unknown>) {
 
 // ---- Dashboard (signed in) -----------------------------------------------
 
-async function createApplication(args: Record<string, unknown>) {
+async function startApplication(args: Record<string, unknown>) {
   const name = str(args.name).replace(/\s+/g, ' ').slice(0, 80) || 'New client';
   const clientId = str(args.clientId).slice(0, 64);
   const id = randomUUID();
@@ -350,7 +350,7 @@ async function issueApplicationLink(args: Record<string, unknown>) {
   return { url, expiresAt, sentTo };
 }
 
-async function deleteApplication(args: Record<string, unknown>) {
+async function removeApplication(args: Record<string, unknown>) {
   const app = await byId(str(args.id));
   await pruneDocs(app.id, []);
   const { errors } = await client.models.Application.delete({ id: app.id });
@@ -367,14 +367,14 @@ export const handler = async (event: { fieldName: string; arguments: Record<stri
     case 'getPublicApplication': return getPublicApplication(event.arguments);
     case 'publicApplicationUpload': return publicApplicationUpload(event.arguments);
     case 'submitApplication': return submitApplication(event.arguments);
-    case 'createApplication': return createApplication(event.arguments);
+    case 'startApplication': return startApplication(event.arguments);
     case 'openApplication': return openApplication(event.arguments);
     case 'saveApplication': return saveApplication(event.arguments);
     case 'applicationUpload': return applicationUpload(event.arguments);
     case 'applicationDocUrl': return applicationDocUrl(event.arguments);
     case 'issueApplicationLink': return issueApplicationLink(event.arguments);
     case 'linkApplication': return linkApplication(event.arguments);
-    case 'deleteApplication': return deleteApplication(event.arguments);
+    case 'removeApplication': return removeApplication(event.arguments);
     default: throw new Error(`Unknown operation ${event.fieldName}`);
   }
 };

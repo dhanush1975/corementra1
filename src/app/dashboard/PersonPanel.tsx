@@ -66,7 +66,7 @@ export function PersonPanel({
 
   const newQuestionnaire = async () => {
     setCreating(true);
-    const res = await client.mutations.createApplication({ name: person.name, clientId: person.id });
+    const res = await client.mutations.startApplication({ name: person.name, clientId: person.id });
     setCreating(false);
     if (res.errors?.length || !res.data) { window.alert("The questionnaire could not be created."); return; }
     load();
@@ -74,7 +74,7 @@ export function PersonPanel({
 
   const deleteQuestionnaire = async (row: ApplicationRow) => {
     if (!window.confirm(`Delete ${person.name}'s questionnaire and its uploaded documents? This can't be undone.`)) return;
-    const res = await client.mutations.deleteApplication({ id: row.id });
+    const res = await client.mutations.removeApplication({ id: row.id });
     if (res.errors?.length) { window.alert("That questionnaire could not be deleted."); return; }
     setEditing(null);
     setApps(list => list?.filter(a => a.id !== row.id) ?? list);

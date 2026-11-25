@@ -327,7 +327,7 @@ const schema = a.schema({
     .handler(a.handler.function(applications)),
 
   // Signed-in dashboard only. Returns the new application's id.
-  createApplication: a.mutation()
+  startApplication: a.mutation()
     .arguments({ name: a.string(), clientId: a.string() })
     .returns(a.string())
     .authorization(allow => [allow.authenticated()])
@@ -383,7 +383,7 @@ const schema = a.schema({
     .handler(a.handler.function(applications)),
 
   // Deletes the application and all its documents.
-  deleteApplication: a.mutation()
+  removeApplication: a.mutation()
     .arguments({ id: a.string().required() })
     .returns(a.boolean())
     .authorization(allow => [allow.authenticated()])

@@ -104,7 +104,7 @@ export function ApplicationsScreen({
 
   const del = async (rec: ApplicationRow) => {
     if (!window.confirm(`Delete ${rec.name}'s questionnaire and its uploaded documents? This can't be undone.`)) return false;
-    const res = await client.mutations.deleteApplication({ id: rec.id });
+    const res = await client.mutations.removeApplication({ id: rec.id });
     if (res.errors?.length) { console.error("Delete failed:", errText(res)); window.alert("That questionnaire could not be deleted."); return false; }
     setApps(list => list.filter(a => a.id !== rec.id));
     return true;
@@ -225,7 +225,7 @@ function NewApplicationModal({ db, commit, onCreated, onClose }: { db: Db; commi
       }
     }
     setBusy(true);
-    const res = await client.mutations.createApplication({ name: person.name, clientId: person.id });
+    const res = await client.mutations.startApplication({ name: person.name, clientId: person.id });
     setBusy(false);
     if (res.errors?.length || !res.data) { console.error("Create failed:", errText(res)); window.alert("The questionnaire could not be created."); return; }
     onCreated(res.data);
