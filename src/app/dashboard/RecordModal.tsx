@@ -22,7 +22,9 @@ export function RecordModal({
 }) {
   const [draft, setDraft] = useState<any>(record);
   const fields = ENTITY_FIELDS[entityKey] || [];
-  const isNew = !(db as any)[entityKey]?.some((r: any) => r.id === draft.id);
+  // Clients live in the people list (db.prospects).
+  const collection = entityKey === "clients" ? "prospects" : entityKey;
+  const isNew = !(db as any)[collection]?.some((r: any) => r.id === draft.id);
   const meta = ENTITY_META[entityKey];
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -30,7 +32,7 @@ export function RecordModal({
   };
 
   return (
-    <Modal title={(isNew ? "New " : "Edit ") + meta.singular} subtitle="Saved to this browser immediately." onClose={onClose} wide>
+    <Modal title={(isNew ? "New " : "Edit ") + meta.singular} subtitle="Saved to the cloud." onClose={onClose} wide>
       <form
         onSubmit={e => {
           e.preventDefault();

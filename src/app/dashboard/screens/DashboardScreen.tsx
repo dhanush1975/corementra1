@@ -1,4 +1,5 @@
 import { dayDiff, money, pct, saleWriting, shortTime } from "../data";
+import { eventsOf } from "../people";
 import { DBtn, DCard, KpiCard } from "../ui";
 import type { Db, IncomeData } from "../types";
 
@@ -25,17 +26,17 @@ export function DashboardScreen({ db, income, goFollowUps }: { db: Db; income: I
     .slice(0, 6);
 
   const eventPerf = db.events.map(e => {
-    const pl = db.prospects.filter(p => p.eventId === e.id);
+    const pl = db.prospects.filter(p => eventsOf(p).includes(e.id));
     const cn = pl.filter(p => p.stage === "CONVERTED");
     const com = income.sales
-      .filter(s => { const c = db.clients.find(x => x.id === s.clientId); return c && cn.some(q => q.name === c.name); })
+      .filter(s => cn.some(q => q.id === s.clientId))
       .reduce((n, s) => n + saleWriting(s).writing, 0);
     return { name: e.name, attended: e.attended || 0, prospects: pl.length, clients: cn.length, commission: money(com) };
   });
 
   const agentRaw = Array.from(new Set(db.agents.map(a => a.name))).map(a => {
     const ss = income.sales.filter(s => s.agent === a);
-    return { name: a, prospects: db.prospects.filter(p => p.agent === a).length, clients: db.clients.filter(c => c.agent === a).length, business: ss.reduce((n, s) => n + (Number(s.premium) || 0), 0), commission: ss.reduce((n, s) => n + saleWriting(s).writing, 0) };
+    return { name: a, prospects: db.prospects.filter(p => p.agent === a).length, clients: db.prospects.filter(c => c.clientType && c.agent === a).length, business: ss.reduce((n, s) => n + (Number(s.premium) || 0), 0), commission: ss.reduce((n, s) => n + saleWriting(s).writing, 0) };
   });
   const maxBv = Math.max(...agentRaw.map(a => a.business), 1);
 
@@ -49,11 +50,11 @@ export function DashboardScreen({ db, income, goFollowUps }: { db: Db; income: I
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard label="Events" value={String(db.events.length)} note={db.events.filter(e => e.status === "Completed").length + " completed"} />
-        <KpiCard label="Prospects" value={String(db.prospects.length)} note={db.prospects.filter(p => p.stage === "NEW").length + " not yet contacted"} tone="blue" />
+        <KpiCard label="Prospects" value={String(db.prospects.filter(p => !p.clientType).length)} note={db.prospects.filter(p => !p.clientType && p.stage === "NEW").length + " not yet contacted"} tone="blue" />
         <KpiCard label="Follow-ups open" value={String(openFu.length)} note={overdueCount + " overdue"} tone={overdueCount ? "red" : "green"} />
         <KpiCard label="Conversion" value={pct(conv.length, db.prospects.length)} note="prospect → converted" tone="green" />
-        <KpiCard label="Clients" value={String(db.clients.filter(c => c.type === "Client" || c.type === "Both").length)} note="purchased a product" />
-        <KpiCard label="Partners" value={String(db.clients.filter(c => c.type === "Partner" || c.type === "Both").length)} note="recruited associates" />
+        <KpiCard label="Clients" value={String(db.prospects.filter(c => c.clientType === "Client" || c.clientType === "Both").length)} note="purchased a product" />
+        <KpiCard label="Partners" value={String(db.prospects.filter(c => c.clientType === "Partner" || c.clientType === "Both").length)} note="recruited associates" />
         <KpiCard label="Commission" value={money(totalCommission)} note={"across " + income.sales.length + " sales"} tone="blue" />
         <KpiCard label="Agents" value={String(db.agents.length)} note="in the organization" />
       </div>

@@ -57,9 +57,19 @@ export interface Prospect {
   kind: ProspectKind;
   completedAt?: string;
   birthday?: string;
+  // Client details. Set clientType ("Client" / "Partner" / "Both") and the
+  // person shows on the Clients board; "" means not a client (yet).
+  clientType?: ClientType | "";
+  since?: string;
+  address?: string;
+  // Events registered for after the first one (eventId). See eventsOf().
+  eventIds?: string[];
 }
 
-export interface Client {
+// A row of the old, separate Clients table. Clients are now people
+// (Prospect with clientType); these are only read once, to move them over
+// (see absorbClients in people.ts), and in old JSON backups.
+export interface LegacyClient {
   id: string;
   name: string;
   email: string;
@@ -152,8 +162,8 @@ export interface PartnerIncome {
 export interface Db {
   events: EventRecord[];
   booths: BoothRecord[];
+  // Everyone: prospects and clients alike (see people.ts).
   prospects: Prospect[];
-  clients: Client[];
   purchases: Purchase[];
   followUps: FollowUp[];
   feedback: Feedback[];

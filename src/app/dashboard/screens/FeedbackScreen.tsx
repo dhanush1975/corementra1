@@ -8,7 +8,7 @@ import type { Db, Feedback } from "../types";
 
 export function FeedbackScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: string) => void }) {
   const [modal, setModal] = useState<Feedback | null>(null);
-  const clientName = (id: string) => db.clients.find(c => c.id === id)?.name || "—";
+  const clientName = (id: string) => db.prospects.find(c => c.id === id)?.name || "—";
 
   const ratings = db.feedback.map(f => Number(f.rating) || 0);
   const avg = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : 0;

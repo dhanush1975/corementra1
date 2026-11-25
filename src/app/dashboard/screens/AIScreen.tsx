@@ -37,7 +37,7 @@ function answer(db: Db, income: IncomeData, text: string): { reply: string; fn?:
     return { reply: "Business value written is " + money(income.sales.reduce((n, s) => n + (Number(s.premium) || 0), 0)) + " from " + income.sales.length + " sales.", fn: "sum_business_value()" };
   }
   if (t.includes("partner") || t.includes("recruit")) {
-    const ps = db.clients.filter(c => c.type === "Partner");
+    const ps = db.prospects.filter(c => c.clientType === "Partner" || c.clientType === "Both");
     return { reply: ps.length + " partner" + (ps.length === 1 ? "" : "s") + " on the books." + (ps.length ? "\n" + ps.map(p => "· " + p.name + " — " + p.agent + ", since " + shortDate(p.since)).join("\n") : ""), fn: "list_clients(type=partner)" };
   }
   if (t.includes("rating") || t.includes("feedback") || t.includes("satisf")) {
@@ -64,7 +64,7 @@ function answer(db: Db, income: IncomeData, text: string): { reply: string; fn?:
     return { reply: "Pipeline: " + STAGES.map(s => s + " " + db.prospects.filter(p => p.stage === s).length).join(" · ") + "\nConverted " + pct(conv.length, db.prospects.length) + " of " + db.prospects.length + " prospects.", fn: "pipeline_summary()" };
   }
   if (t.includes("client")) {
-    return { reply: db.clients.filter(c => c.type === "Client").length + " clients and " + db.clients.filter(c => c.type === "Partner").length + " partners. Average business value per record: " + money(income.sales.reduce((n, s) => n + (Number(s.premium) || 0), 0) / (db.clients.length || 1)) + ".", fn: "list_clients()" };
+    return { reply: db.prospects.filter(c => c.clientType === "Client" || c.clientType === "Both").length + " clients and " + db.prospects.filter(c => c.clientType === "Partner" || c.clientType === "Both").length + " partners. Average business value per record: " + money(income.sales.reduce((n, s) => n + (Number(s.premium) || 0), 0) / (db.prospects.filter(c => c.clientType).length || 1)) + ".", fn: "list_clients()" };
   }
   if (t.includes("source") || t.includes("referral")) {
     const by: Record<string, { n: number; c: number }> = {};

@@ -1,81 +1,120 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { getUrl, remove, uploadData } from "aws-amplify/storage";
+import { useCallback, useEffect, useState } from "react";
 import { client } from "../client";
-import { listAll } from "../sync";
-import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
+import { RecordTable, type ColumnDef } from "../RecordTable";
 import { SearchSelect } from "../SearchSelect";
-import { DBtn, DCard, DInput, DSelect, DTextarea, Field } from "../ui";
-import {
-  DOC_SLOTS, VISA_STATUSES, blankBeneficiary, blankQuestionnaire, docPaths, parseQuestionnaire, progress,
-  type Applicant, type Beneficiary, type DocKey, type Questionnaire, type YesNo,
-} from "../applications/questionnaire";
-import type { Client, Db } from "../types";
+import { DBtn, DCard, DInput, DSelect, Field, Modal } from "../ui";
+import { ApplicationForm, postUpload, type DocActions } from "../applications/ApplicationForm";
+import { parseQuestionnaire, type Questionnaire } from "../applications/questionnaire";
+import { blankRecord } from "../forms";
+import { findDuplicate, normEmail } from "../people";
+import { PersonAutocomplete, TypeBadge } from "../PersonAutocomplete";
+import { LinkActions, LinkStatus, OPEN, linkState, useNow } from "../applications/LinkActions";
+import type { Db, Prospect } from "../types";
 
+// Applications belong to a person (Application.clientId = their id in
+// db.prospects), so they also show on that person's page.
+type Client = Prospect;
+
+// "Prospect — Name · email" — everyone in your records is searchable here,
+// prospects as well as clients.
+const personLabel = (p: Prospect) => `${p.clientType || "Prospect"} — ` + [p.name, p.email].filter(Boolean).join(" · ");
+
+// What the dashboard may read of an application. The answers themselves
+// are encrypted (Application.secret) and only come back decrypted, one
+// application at a time, through openApplication.
 export interface ApplicationRow {
   id: string;
   name: string;
   clientId?: string | null;
   status?: string | null;
-  data?: string | null;
+  token?: string | null;
+  linkExpiresAt?: string | null;
+  linkSentAt?: string | null;
+  linkSentTo?: string | null;
+  submittedAt?: string | null;
   updatedAt?: string;
 }
 
-const STATUSES = ["Draft", "Submitted"];
+export const ROW_FIELDS = ["id", "name", "clientId", "status", "token", "linkExpiresAt", "linkSentAt", "linkSentTo", "submittedAt", "updatedAt"] as const;
+const DONE = "Submitted";
+const STATUS_LABELS: Record<string, string> = {
+  [OPEN]: "Not submitted — client can fill it in",
+  [DONE]: "Submitted — link closed",
+};
 
-const updatedLabel = (iso?: string) =>
+const dateLabel = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
+const errText = (res: { errors?: { message: string }[] | null }) => res.errors?.map(e => e.message).join("; ") || "";
 
-const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+async function listApplications(): Promise<ApplicationRow[]> {
+  const rows: ApplicationRow[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const res = await client.models.Application.list({
+      limit: 1000,
+      nextToken,
+      // Never pull the encrypted blobs into the list.
+      selectionSet: [...ROW_FIELDS],
+    });
+    if (res.errors?.length) throw new Error(errText(res));
+    rows.push(...(res.data as ApplicationRow[]));
+    nextToken = res.nextToken;
+  } while (nextToken);
+  return rows;
+}
 
-export function ApplicationsScreen({ db }: { db: Db }) {
-  // Loaded here rather than in useDb on purpose: these hold SSNs and bank
-  // numbers, and everything in useDb's Db goes into the JSON backup.
+export function ApplicationsScreen({
+  db, commit, openId, onOpened,
+}: {
+  db: Db;
+  commit: (db: Db, msg?: string) => void;
+  // An application to open straight away (from a person's page).
+  openId?: string | null;
+  onOpened?: () => void;
+}) {
+  // Loaded here rather than in useDb on purpose: everything in useDb's Db
+  // goes into the JSON backup.
   const [apps, setApps] = useState<ApplicationRow[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [editing, setEditing] = useState<ApplicationRow | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState<ApplicationRow | null>(null);
+  const now = useNow();
+  const patchRow = (id: string, patch: Partial<ApplicationRow>) => {
+    setApps(list => list.map(a => (a.id === id ? { ...a, ...patch } : a)));
+    setCreated(c => (c?.id === id ? { ...c, ...patch } : c));
+  };
 
   const load = useCallback(() => {
     setState("loading");
-    listAll<ApplicationRow>(client.models.Application as any)
-      .then(rows => { setApps(rows); setState("ready"); })
+    listApplications()
+      .then(rows => { setApps(rows.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))); setState("ready"); })
       .catch(err => { console.error("Applications failed to load:", err); setState("error"); });
   }, []);
   useEffect(load, [load]);
 
-  const save = async (rec: ApplicationRow, q: Questionnaire): Promise<ApplicationRow | null> => {
-    const prev = apps.find(a => a.id === rec.id);
-    const input = {
-      id: rec.id,
-      name: q.primary.person.fullName.trim() || "Untitled application",
-      clientId: rec.clientId || null,
-      status: rec.status || "Draft",
-      data: JSON.stringify(q),
-    };
-    const res = prev ? await client.models.Application.update(input) : await client.models.Application.create(input);
-    if (res.errors?.length || !res.data) {
-      console.error("Application save failed:", res.errors);
-      window.alert("The application could not be saved. Please try again.");
-      return null;
-    }
-    // Files replaced or removed since the last save are no longer needed.
-    const keep = new Set(docPaths(q));
-    docPaths(parseQuestionnaire(prev?.data)).filter(p => !keep.has(p)).forEach(p => remove({ path: p }).catch(() => {}));
-    const saved: ApplicationRow = { ...input, updatedAt: res.data.updatedAt };
-    setApps(list => (prev ? list.map(a => (a.id === saved.id ? saved : a)) : [saved, ...list]));
-    return saved;
-  };
+  useEffect(() => {
+    if (!openId || state !== "ready") return;
+    const row = apps.find(a => a.id === openId);
+    if (row) setEditing(row);
+    else listApplications().then(rows => { setApps(rows); const r2 = rows.find(a => a.id === openId); if (r2) setEditing(r2); }).catch(() => {});
+    onOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, state]);
 
-  const del = async (rec: ApplicationRow, draft?: Questionnaire) => {
-    if (!window.confirm(`Delete ${rec.name}'s application and its uploaded documents? This can't be undone.`)) return false;
-    const exists = apps.some(a => a.id === rec.id);
-    if (exists) {
-      const res = await client.models.Application.delete({ id: rec.id });
-      if (res.errors?.length) { console.error("Application delete failed:", res.errors); window.alert("That application could not be deleted."); return false; }
-    }
-    const paths = new Set([...docPaths(parseQuestionnaire(rec.data)), ...(draft ? docPaths(draft) : [])]);
-    paths.forEach(p => remove({ path: p }).catch(() => {}));
+  const del = async (rec: ApplicationRow) => {
+    if (!window.confirm(`Delete ${rec.name}'s questionnaire and its uploaded documents? This can't be undone.`)) return false;
+    const res = await client.mutations.deleteApplication({ id: rec.id });
+    if (res.errors?.length) { console.error("Delete failed:", errText(res)); window.alert("That questionnaire could not be deleted."); return false; }
     setApps(list => list.filter(a => a.id !== rec.id));
     return true;
+  };
+
+  const afterCreate = async (id: string) => {
+    setCreating(false);
+    const rows = await listApplications().catch(() => null);
+    if (rows) setApps(rows.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || "")));
+    setCreated(rows?.find(r => r.id === id) ?? null);
   };
 
   if (editing) {
@@ -83,27 +122,32 @@ export function ApplicationsScreen({ db }: { db: Db }) {
       <ApplicationEditor
         key={editing.id}
         row={editing}
-        isNew={!apps.some(a => a.id === editing.id)}
-        clients={db.clients}
-        onSave={save}
-        onDelete={del}
+        clients={db.prospects}
+        onSaved={row => setApps(list => list.map(a => (a.id === row.id ? { ...a, ...row } : a)))}
+        onDelete={async () => { if (await del(editing)) setEditing(null); }}
         onClose={() => setEditing(null)}
       />
     );
   }
 
   const columns: ColumnDef<ApplicationRow>[] = [
-    { key: "name", label: "Primary insured", render: r => <span className="font-medium">{r.name}</span>, sortValue: r => r.name },
-    { key: "visa", label: "Visa / status", render: r => parseQuestionnaire(r.data).primary.person.visaStatus || "—" },
-    { key: "spouse", label: "Spouse policy", render: r => (parseQuestionnaire(r.data).includeSpouse ? "Yes" : "No") },
     {
-      key: "progress",
-      label: "Sections done",
-      render: r => { const p = progress(parseQuestionnaire(r.data)); return `${p.done} / ${p.total}`; },
+      key: "name",
+      label: "Person",
+      render: r => {
+        const p = db.prospects.find(x => x.id === r.clientId);
+        return (
+          <span className="inline-flex items-center gap-2">
+            {p ? <TypeBadge person={p} /> : <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#faeceb] text-[#a4372f]">Not linked</span>}
+            <span className="font-medium">{p?.name || r.name}</span>
+          </span>
+        );
+      },
+      sortValue: r => r.name,
     },
-    { key: "docs", label: "Documents", render: r => docPaths(parseQuestionnaire(r.data)).length },
-    { key: "status", label: "Status", render: r => <TagPill text={r.status || "Draft"} /> },
-    { key: "updated", label: "Updated", render: r => updatedLabel(r.updatedAt), sortValue: r => r.updatedAt || "" },
+    { key: "status", label: "Submitted?", render: r => <LinkStatus row={r} now={now} />, sortValue: r => linkState(r, now) },
+    { key: "link", label: "Client link", render: r => <LinkActions row={r} now={now} compact onIssued={patch => patchRow(r.id, patch)} /> },
+    { key: "updated", label: "Updated", render: r => dateLabel(r.updatedAt), sortValue: r => r.updatedAt || "" },
   ];
 
   return (
@@ -111,17 +155,19 @@ export function ApplicationsScreen({ db }: { db: Db }) {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="text-xs uppercase tracking-wider text-[#98a2b3]">Book of business</div>
-          <h2 className="text-2xl font-black mt-0.5">Applications</h2>
-          <p className="text-sm text-[#667085] mt-1">Client questionnaires for life insurance applications: insured, beneficiaries, bank, health, spouse and H1B documents.</p>
+          <h2 className="text-2xl font-black mt-0.5">Questionnaires</h2>
+          <p className="text-sm text-[#667085] mt-1">
+            Send a client their questionnaire link. It works for 24 hours and can be submitted once; resend it if it expires.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <DBtn variant="secondary" onClick={load}>Refresh</DBtn>
-          <DBtn onClick={() => setEditing({ id: newId(), name: "", status: "Draft", data: JSON.stringify(blankQuestionnaire()) })}>+ New application</DBtn>
+          <DBtn onClick={() => setCreating(true)}>+ New questionnaire</DBtn>
         </div>
       </div>
 
       {state === "error" && (
-        <p className="text-sm text-[#a4372f]">Applications couldn't be loaded. <button onClick={load} className="underline">Try again</button>.</p>
+        <p className="text-sm text-[#a4372f]">Questionnaires couldn't be loaded. <button onClick={load} className="underline">Try again</button>.</p>
       )}
       {state === "loading" ? (
         <DCard className="p-5 text-sm text-[#98a2b3]">Loading…</DCard>
@@ -134,64 +180,169 @@ export function ApplicationsScreen({ db }: { db: Db }) {
           searchFn={(r, q) => r.name.toLowerCase().includes(q)}
         />
       )}
-      <p className="text-xs text-[#98a2b3]">Applications hold SSNs and bank details, so they're not included in the JSON backup on the Data screen.</p>
+      <p className="text-xs text-[#98a2b3]">
+        Answers and documents are encrypted with a dedicated AWS KMS key and only decrypted when you open a questionnaire here.
+        They are not included in the JSON backup on the Data screen.
+      </p>
+
+      {creating && <NewApplicationModal db={db} commit={commit} onCreated={afterCreate} onClose={() => setCreating(false)} />}
+
+      {created && (
+        <Modal title="Questionnaire created" subtitle={created.name} onClose={() => setCreated(null)}>
+          <p className="text-sm text-[#475467]">
+            Email the link to {created.name}, or copy it to send another way. It works for 24 hours and can be submitted once.
+          </p>
+          <div className="flex flex-col gap-2 mt-4">
+            <LinkStatus row={created} now={now} />
+            <LinkActions row={created} now={now} onIssued={patch => patchRow(created.id, patch)} />
+          </div>
+          <p className="text-xs text-[#98a2b3] mt-4">Anyone with the link can submit the form, but no one can read answers back through it.</p>
+          <div className="flex justify-between gap-2 mt-6">
+            <DBtn variant="secondary" onClick={() => { const r = created; setCreated(null); setEditing(r); }}>Fill it in myself</DBtn>
+            <DBtn onClick={() => setCreated(null)}>Done</DBtn>
+          </div>
+        </Modal>
+      )}
     </div>
+  );
+}
+
+function NewApplicationModal({ db, commit, onCreated, onClose }: { db: Db; commit: (db: Db, msg?: string) => void; onCreated: (id: string) => void; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [picked, setPicked] = useState<Prospect | null>(null);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    let person = picked;
+    if (!person) {
+      // One record per person: someone already on file is reused.
+      const draft: Prospect = { ...blankRecord("prospects"), name: name.trim().replace(/\s+/g, " "), email: normEmail(email), source: "Not captured yet", notes: "Added for a client questionnaire." };
+      person = findDuplicate(db.prospects, draft) ?? null;
+      if (!person) {
+        person = draft;
+        commit({ ...db, prospects: [draft, ...db.prospects] }, "Added " + draft.name);
+      }
+    }
+    setBusy(true);
+    const res = await client.mutations.createApplication({ name: person.name, clientId: person.id });
+    setBusy(false);
+    if (res.errors?.length || !res.data) { console.error("Create failed:", errText(res)); window.alert("The questionnaire could not be created."); return; }
+    onCreated(res.data);
+  };
+
+  const ready = picked ? true : !!name.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  return (
+    <Modal title="New questionnaire" subtitle="Creates a private link for the client to fill in the questionnaire." onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <Field label="Name">
+          <PersonAutocomplete
+            value={name}
+            autoFocus
+            people={db.prospects}
+            placeholder="Start typing a name or email…"
+            onChange={t => { setName(t); setPicked(null); }}
+            onPick={p => { setPicked(p); setName(p.name); }}
+          />
+        </Field>
+        {picked ? (
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-[#eaf1f9] px-4 py-3 text-[13px]">
+            <span className="min-w-0">
+              <span className="font-semibold">{picked.name}</span>
+              <span className="text-[#667085]"> · {[picked.email, picked.clientType || "Prospect"].filter(Boolean).join(" · ")}</span>
+            </span>
+            <button type="button" onClick={() => { setPicked(null); setName(""); }} className="text-xs font-semibold text-[#667085] hover:text-[#0a0a0a] shrink-0">Change</button>
+          </div>
+        ) : name.trim() ? (
+          <>
+            <Field label="Email (new person)"><DInput type="email" value={email} onChange={e => setEmail(e.target.value)} /></Field>
+            <p className="text-xs text-[#98a2b3] -mt-2">Not in the list? They'll be added to your Pipeline. If this name and email are already on file, that record is used instead.</p>
+          </>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <DBtn variant="secondary" onClick={onClose}>Cancel</DBtn>
+          <DBtn onClick={create} disabled={busy || !ready}>{busy ? "Creating…" : "Create link"}</DBtn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
 // ---- Editor ---------------------------------------------------------------
 
-function ApplicationEditor({
-  row, isNew, clients, onSave, onDelete, onClose,
+// Used on the Questionnaires screen and, in an overlay, on a person's page.
+export function ApplicationEditor({
+  row: initialRow, clients, onSaved, onDelete, onClose, backLabel = "← All questionnaires",
 }: {
   row: ApplicationRow;
-  isNew: boolean;
   clients: Client[];
-  onSave: (rec: ApplicationRow, q: Questionnaire) => Promise<ApplicationRow | null>;
-  onDelete: (rec: ApplicationRow, draft?: Questionnaire) => Promise<boolean>;
+  onSaved: (row: Partial<ApplicationRow> & { id: string }) => void;
+  onDelete: () => void;
   onClose: () => void;
+  backLabel?: string;
 }) {
-  const [saved, setSaved] = useState<{ row: ApplicationRow; q: Questionnaire; isNew: boolean }>(() => ({ row, q: parseQuestionnaire(row.data), isNew }));
-  const [meta, setMeta] = useState({ clientId: row.clientId || "", status: row.status || "Draft" });
-  const [q, setQ] = useState<Questionnaire>(saved.q);
-  const [who, setWho] = useState<"primary" | "spouse">("primary");
+  // Link details change when a link is (re)sent from here.
+  const [row, setRow] = useState(initialRow);
+  const now = useNow();
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [saved, setSaved] = useState<{ q: Questionnaire; clientId: string; status: string } | null>(null);
+  const [q, setQ] = useState<Questionnaire | null>(null);
+  const [meta, setMeta] = useState({ clientId: row.clientId || "", status: row.status || OPEN });
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState("");
 
-  const dirty =
-    saved.isNew ||
-    JSON.stringify(q) !== JSON.stringify(saved.q) ||
-    meta.clientId !== (saved.row.clientId || "") ||
-    meta.status !== (saved.row.status || "Draft");
+  const load = useCallback(() => {
+    setLoadState("loading");
+    client.queries.openApplication({ id: row.id }).then(res => {
+      if (res.errors?.length || res.data == null) { console.error("Open failed:", errText(res)); setLoadState("error"); return; }
+      const parsed = parseQuestionnaire(res.data);
+      setQ(parsed);
+      setSaved({ q: parsed, clientId: row.clientId || "", status: row.status || OPEN });
+      setLoadState("ready");
+    }).catch(err => { console.error("Open failed:", err); setLoadState("error"); });
+  }, [row.id, row.clientId, row.status]);
+  useEffect(load, [load]);
 
-  const applicant = q[who];
-  const setApplicant = (next: Applicant) => setQ(prev => ({ ...prev, [who]: next }));
+  const dirty = !!saved && !!q && (
+    JSON.stringify(q) !== JSON.stringify(saved.q) || meta.clientId !== saved.clientId || meta.status !== saved.status
+  );
 
-  const doSave = async () => {
+  const docs: DocActions = {
+    upload: async (who, slot, file) => {
+      const res = await client.mutations.applicationUpload({ id: row.id, who, slot, contentType: file.type, size: file.size });
+      if (res.errors?.length || !res.data) throw new Error(errText(res) || "No upload link");
+      await postUpload(res.data, file);
+      return { path: res.data.path, name: file.name };
+    },
+    open: async doc => {
+      const res = await client.queries.applicationDocUrl({ id: row.id, path: doc.path });
+      if (res.errors?.length || !res.data) throw new Error(errText(res) || "No download link");
+      return res.data;
+    },
+  };
+
+  const save = async () => {
+    if (!q) return;
     setBusy(true);
-    const result = await onSave({ ...saved.row, ...meta }, q);
+    const res = await client.mutations.saveApplication({ id: row.id, data: JSON.stringify(q), status: meta.status, clientId: meta.clientId || undefined });
     setBusy(false);
-    if (!result) return;
-    setSaved({ row: result, q, isNew: false });
+    if (res.errors?.length || !res.data) { console.error("Save failed:", errText(res)); window.alert("The questionnaire could not be saved. Please try again."); return; }
+    setSaved({ q, ...meta });
+    onSaved({ id: row.id, ...meta, name: q.primary.person.fullName.trim() || row.name, updatedAt: new Date().toISOString() });
     setFlash("Saved");
     window.setTimeout(() => setFlash(""), 2000);
   };
 
   const close = () => {
-    if (dirty && !window.confirm(saved.isNew ? "Discard this new application?" : "Discard your unsaved changes?")) return;
-    // Files uploaded since the last save that the saved version doesn't use.
-    const keep = new Set(docPaths(saved.q));
-    docPaths(q).filter(p => !keep.has(p)).forEach(p => remove({ path: p }).catch(() => {}));
+    if (dirty && !window.confirm("Discard your unsaved changes?")) return;
     onClose();
-  };
-
-  const doDelete = async () => {
-    if (await onDelete(saved.row, q)) onClose();
   };
 
   const prefill = (c: Client) => {
     setMeta(m => ({ ...m, clientId: c.id }));
     setQ(prev => {
+      if (!prev) return prev;
       const p = prev.primary.person;
       return {
         ...prev,
@@ -210,304 +361,72 @@ function ApplicationEditor({
     });
   };
 
-  const title = q.primary.person.fullName.trim() || (saved.isNew ? "New application" : "Untitled application");
+  const title = q?.primary.person.fullName.trim() || row.name;
 
   return (
     <div className="flex flex-col gap-4 max-w-[960px]">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <button onClick={close} className="text-xs text-[#667085] hover:text-[#0a0a0a]">← All applications</button>
+          <button onClick={close} className="text-xs text-[#667085] hover:text-[#0a0a0a]">{backLabel}</button>
           <h2 className="text-2xl font-black mt-1">{title}</h2>
-          <p className="text-sm text-[#667085] mt-1">Fill this in accurately to the best of the client's knowledge for a trial application.</p>
+          <div className="mt-2"><LinkStatus row={{ ...row, status: saved?.status ?? row.status }} now={now} /></div>
         </div>
-        <div className="flex items-center gap-2">
-          {flash && <span className="text-xs font-semibold text-[#14683f]">{flash}</span>}
-          {!dirty && !flash && <span className="text-xs text-[#98a2b3]">All changes saved</span>}
-          <DBtn variant="secondary" onClick={close}>{dirty ? "Cancel" : "Done"}</DBtn>
-          <DBtn onClick={doSave} disabled={busy || !dirty}>{busy ? "Saving…" : "Save"}</DBtn>
-        </div>
+        {loadState === "ready" && (
+          <div className="flex items-center gap-2">
+            {flash && <span className="text-xs font-semibold text-[#14683f]">{flash}</span>}
+            {!dirty && !flash && <span className="text-xs text-[#98a2b3]">All changes saved</span>}
+            <DBtn variant="secondary" onClick={close}>{dirty ? "Cancel" : "Done"}</DBtn>
+            <DBtn onClick={save} disabled={busy || !dirty}>{busy ? "Saving…" : "Save"}</DBtn>
+          </div>
+        )}
       </div>
 
-      <DCard className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Field label="Linked client (optional — fills in name, email, phone, address, DOB)">
-          <SearchSelect options={clients} value={meta.clientId} labelOf={c => c.name} onSelect={prefill} placeholder="Search clients…" />
-        </Field>
-        <Field label="Status">
-          <DSelect value={meta.status} onChange={e => setMeta(m => ({ ...m, status: e.target.value }))}>
-            {STATUSES.map(s => <option key={s}>{s}</option>)}
-          </DSelect>
-        </Field>
-        <Field label="Spouse is applying for a separate policy">
-          <YesNoToggle
-            value={q.includeSpouse ? "Yes" : "No"}
-            onChange={v => { setQ(prev => ({ ...prev, includeSpouse: v === "Yes" })); if (v !== "Yes") setWho("primary"); }}
-          />
-        </Field>
-      </DCard>
-
-      {q.includeSpouse && (
-        <div className="inline-flex p-1 rounded-full bg-[#eceef1] w-max sticky top-[72px] z-10">
-          {(["primary", "spouse"] as const).map(k => (
-            <button key={k} onClick={() => setWho(k)} className={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${who === k ? "bg-white shadow-sm" : "text-[#667085]"}`}>
-              {k === "primary" ? "Primary insured" : "Spouse"}
-            </button>
-          ))}
-        </div>
+      {loadState === "loading" && <DCard className="p-5 text-sm text-[#98a2b3]">Decrypting…</DCard>}
+      {loadState === "error" && (
+        <DCard className="p-5 text-sm text-[#a4372f]">This questionnaire couldn't be opened. <button onClick={load} className="underline">Try again</button>.</DCard>
       )}
 
-      <ApplicantForm
-        key={who}
-        who={who}
-        appId={saved.row.id}
-        value={applicant}
-        onChange={setApplicant}
-      />
+      {loadState === "ready" && q && (
+        <>
+          <DCard className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label="Person this questionnaire belongs to (fills in blank name, email, phone, address, DOB)">
+              <SearchSelect options={clients} value={meta.clientId} labelOf={personLabel} onSelect={prefill} placeholder="Search everyone — prospects and clients…" />
+            </Field>
+            <Field label="Status">
+              <DSelect value={meta.status} onChange={e => setMeta(m => ({ ...m, status: e.target.value }))}>
+                {[OPEN, DONE].map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+              </DSelect>
+            </Field>
+            {saved?.status === OPEN && (
+              <div className="md:col-span-2 flex items-center gap-3 flex-wrap rounded-xl bg-[#fdf3e7] px-4 py-3 text-xs text-[#8a5a1a]">
+                <span className="flex-1 min-w-[240px]">
+                  Not submitted yet. If the client submits through their link, their answers replace what's saved here. Set the status to Submitted to close the link.
+                </span>
+                <LinkActions
+                  row={{ ...row, status: saved.status }}
+                  now={now}
+                  onIssued={patch => { setRow(r0 => ({ ...r0, ...patch })); onSaved({ id: row.id, ...patch }); }}
+                />
+              </div>
+            )}
+          </DCard>
 
-      <div className="flex items-center justify-between gap-2 pt-2 pb-8">
-        <DBtn variant="danger" onClick={doDelete}>{saved.isNew ? "Discard application" : "Delete application"}</DBtn>
-        <DBtn onClick={doSave} disabled={busy || !dirty}>{busy ? "Saving…" : "Save"}</DBtn>
-      </div>
-    </div>
-  );
-}
-
-function ApplicantForm({ who, appId, value, onChange }: { who: "primary" | "spouse"; appId: string; value: Applicant; onChange: (a: Applicant) => void }) {
-  const p = value.person;
-  const setP = (patch: Partial<Applicant["person"]>) => onChange({ ...value, person: { ...p, ...patch } });
-  const setBank = (patch: Partial<Applicant["bank"]>) => onChange({ ...value, bank: { ...value.bank, ...patch } });
-  const setHealth = (patch: Partial<Applicant["health"]>) => onChange({ ...value, health: { ...value.health, ...patch } });
-  const isSpouse = who === "spouse";
-  const txt = (key: keyof Applicant["person"], type = "text") => (
-    <DInput type={type} value={p[key]} onChange={e => setP({ [key]: e.target.value })} />
-  );
-
-  return (
-    <>
-      <Section title={isSpouse ? "Spouse details" : "Primary insured information"}>
-        <Grid>
-          <Field label="Full name as per ID">{txt("fullName")}</Field>
-          <Field label="Date of birth">{txt("dob", "date")}</Field>
-          <Field label="Driver's license number">{txt("license")}</Field>
-          <Field label="Phone">{txt("phone", "tel")}</Field>
-          <Field label="Email">{txt("email", "email")}</Field>
-          <Field label="SSN"><SecretInput value={p.ssn} onChange={v => setP({ ssn: v })} /></Field>
-          <Wide><Field label="Home address">{txt("address")}</Field></Wide>
-          <Field label="Profession">{txt("profession")}</Field>
-          <Field label="Company they work for">{txt("employer")}</Field>
-          <Field label="Working with this company since">{txt("employedSince", "date")}</Field>
-          <Field label="Visa or immigrant status">
-            <DSelect value={p.visaStatus} onChange={e => setP({ visaStatus: e.target.value })}>
-              <option value="">Select…</option>
-              {VISA_STATUSES.map(v => <option key={v}>{v}</option>)}
-            </DSelect>
-          </Field>
-          <Field label="Country of birth">{txt("countryOfBirth")}</Field>
-          <Field label="Existing life insurance outside of work?">
-            <YesNoToggle value={p.existingInsurance} onChange={v => setP({ existingInsurance: v })} />
-          </Field>
-          {p.existingInsurance === "Yes" && (
-            <>
-              <Field label="Company name & policy numbers">{txt("existingPolicies")}</Field>
-              <Field label="Face value of existing policies">{txt("existingFaceValue")}</Field>
-            </>
-          )}
-        </Grid>
-      </Section>
-
-      <BeneficiaryList
-        title="Beneficiaries"
-        hint="Add as many beneficiaries as needed."
-        list={value.beneficiaries}
-        onChange={beneficiaries => onChange({ ...value, beneficiaries })}
-      />
-      <BeneficiaryList
-        title="Contingent beneficiaries (after primary)"
-        hint="Paid out if no primary beneficiary survives. Add as many as needed."
-        list={value.contingent}
-        onChange={contingent => onChange({ ...value, contingent })}
-      />
-
-      <Section
-        title="Bank information"
-        hint={isSpouse
-          ? "The bank account will not be drafted until the client approves and accepts the policy."
-          : "Lets the client secure coverage right away. The first payment may be drafted and is refunded if the client decides not to move forward."}
-      >
-        <Grid>
-          <Field label="Bank name"><DInput placeholder="e.g. Bank of America" value={value.bank.bankName} onChange={e => setBank({ bankName: e.target.value })} /></Field>
-          <Field label="Account number"><SecretInput value={value.bank.accountNumber} onChange={v => setBank({ accountNumber: v })} /></Field>
-          <Field label="Routing number"><DInput inputMode="numeric" value={value.bank.routingNumber} onChange={e => setBank({ routingNumber: e.target.value })} /></Field>
-        </Grid>
-      </Section>
-
-      <Section title="Health information">
-        <Grid>
-          <Field label="Blood pressure"><YesNoToggle value={value.health.bloodPressure} onChange={v => setHealth({ bloodPressure: v })} /></Field>
-          <Field label="Diabetes"><YesNoToggle value={value.health.diabetes} onChange={v => setHealth({ diabetes: v })} /></Field>
-          <Field label="Cholesterol"><YesNoToggle value={value.health.cholesterol} onChange={v => setHealth({ cholesterol: v })} /></Field>
-          <Wide><Field label="Any other medical condition"><DTextarea rows={2} value={value.health.otherConditions} onChange={e => setHealth({ otherConditions: e.target.value })} /></Field></Wide>
-          <Wide><Field label="Prescription medicine (names and how many mg)"><DTextarea rows={2} value={value.health.medications} onChange={e => setHealth({ medications: e.target.value })} /></Field></Wide>
-          <Field label="Primary physician (PCP) full name"><DInput value={value.health.pcpName} onChange={e => setHealth({ pcpName: e.target.value })} /></Field>
-          <Field label="PCP phone"><DInput type="tel" value={value.health.pcpPhone} onChange={e => setHealth({ pcpPhone: e.target.value })} /></Field>
-          <Wide><Field label="PCP office address"><DInput value={value.health.pcpAddress} onChange={e => setHealth({ pcpAddress: e.target.value })} /></Field></Wide>
-        </Grid>
-      </Section>
-
-      <Section title="H1B documents" hint="Needed when the applicant is on an H1B visa.">
-        <div className="flex flex-col gap-2">
-          {DOC_SLOTS.map(slot => (
-            <DocSlot
-              key={slot.key}
-              label={slot.label}
-              doc={value.docs[slot.key]}
-              folder={`applications/${appId}/${who}-${slot.key}`}
-              onChange={doc => {
-                const docs = { ...value.docs };
-                if (doc) docs[slot.key as DocKey] = doc; else delete docs[slot.key as DocKey];
-                onChange({ ...value, docs });
-              }}
-            />
-          ))}
-        </div>
-      </Section>
-    </>
-  );
-}
-
-function BeneficiaryList({ title, hint, list, onChange }: { title: string; hint: string; list: Beneficiary[]; onChange: (l: Beneficiary[]) => void }) {
-  const set = (id: string, patch: Partial<Beneficiary>) => onChange(list.map(b => (b.id === id ? { ...b, ...patch } : b)));
-  return (
-    <Section title={title} hint={hint}>
-      <div className="flex flex-col gap-3">
-        {list.map((b, i) => (
-          <div key={b.id} className="rounded-xl border border-[#eef0f3] bg-[#fafbfc] p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-[#475467]">#{i + 1}</span>
-              <button onClick={() => onChange(list.filter(x => x.id !== b.id))} className="text-xs text-[#b4443a] hover:underline">Remove</button>
-            </div>
-            <Grid>
-              <Field label="Full name as per ID"><DInput value={b.fullName} onChange={e => set(b.id, { fullName: e.target.value })} /></Field>
-              <Field label="Relationship with insured"><DInput value={b.relationship} onChange={e => set(b.id, { relationship: e.target.value })} /></Field>
-              <Field label="Date of birth"><DInput type="date" value={b.dob} onChange={e => set(b.id, { dob: e.target.value })} /></Field>
-              <Field label="SSN"><SecretInput value={b.ssn} onChange={v => set(b.id, { ssn: v })} /></Field>
-              <Field label="Phone number"><DInput type="tel" value={b.phone} onChange={e => set(b.id, { phone: e.target.value })} /></Field>
-            </Grid>
-          </div>
-        ))}
-        <div>
-          <DBtn variant="secondary" onClick={() => onChange([...list, blankBeneficiary()])}>+ Add {list.length ? "another" : "one"}</DBtn>
-        </div>
-      </div>
-    </Section>
-  );
-}
-
-function DocSlot({ label, doc, folder, onChange }: { label: string; doc?: { path: string; name: string }; folder: string; onChange: (d: { path: string; name: string } | null) => void }) {
-  const [state, setState] = useState<"idle" | "uploading" | "error">("idle");
-
-  const upload = async (file: File) => {
-    setState("uploading");
-    try {
-      const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-80);
-      const path = `${folder}-${Date.now()}-${safe}`;
-      await uploadData({ path, data: file, options: { contentType: file.type || "application/octet-stream" } }).result;
-      onChange({ path, name: file.name });
-      setState("idle");
-    } catch (err) {
-      console.error("Upload failed:", err);
-      setState("error");
-    }
-  };
-
-  const open = async () => {
-    if (!doc) return;
-    // Open the tab first (synchronously, inside the click) so pop-up
-    // blockers allow it, then point it at the signed URL.
-    const tab = window.open("", "_blank");
-    try {
-      const { url } = await getUrl({ path: doc.path, options: { expiresIn: 300 } });
-      if (tab) tab.location.href = url.toString(); else window.location.href = url.toString();
-    } catch (err) {
-      tab?.close();
-      console.error("Couldn't open document:", err);
-      window.alert("That document couldn't be opened.");
-    }
-  };
-
-  return (
-    <div className="flex items-center justify-between gap-3 py-2 border-b border-[#f4f5f7] last:border-0 flex-wrap">
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{label}</div>
-        <div className="text-xs text-[#98a2b3] truncate">
-          {state === "uploading" ? "Uploading…" : state === "error" ? <span className="text-[#a4372f]">Upload failed — try again.</span> : doc ? doc.name : "Not uploaded"}
-        </div>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        {doc && <DBtn variant="ghost" onClick={open}>Open</DBtn>}
-        {doc && <DBtn variant="ghost" onClick={() => onChange(null)}>Remove</DBtn>}
-        <label className={`inline-flex items-center justify-center rounded-full text-[13px] font-semibold px-4 py-2 border border-[#e5e5e5] bg-white text-[#344054] hover:bg-[#f5f5f5] cursor-pointer ${state === "uploading" ? "opacity-40 pointer-events-none" : ""}`}>
-          {doc ? "Replace" : "Browse & upload"}
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}
+          <ApplicationForm
+            value={q}
+            onChange={setQ}
+            docs={docs}
+            audience="agent"
+            people={clients}
+            // Picking the primary insured links the questionnaire to them.
+            onPickPerson={(who, p) => { if (who === "primary") setMeta(m => ({ ...m, clientId: p.id })); }}
           />
-        </label>
-      </div>
-    </div>
-  );
-}
 
-// ---- Small pieces ---------------------------------------------------------
-
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  return (
-    <DCard className="p-5">
-      <h4 className="text-base font-bold">{title}</h4>
-      {hint && <p className="text-xs text-[#98a2b3] mt-1">{hint}</p>}
-      <div className="mt-4">{children}</div>
-    </DCard>
-  );
-}
-
-const Grid = ({ children }: { children: ReactNode }) => <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>;
-const Wide = ({ children }: { children: ReactNode }) => <div className="md:col-span-2">{children}</div>;
-
-function YesNoToggle({ value, onChange }: { value: YesNo; onChange: (v: YesNo) => void }) {
-  return (
-    <div className="inline-flex p-1 rounded-full bg-[#eceef1] w-max">
-      {(["Yes", "No"] as const).map(v => (
-        <button
-          key={v}
-          type="button"
-          onClick={() => onChange(value === v ? "" : v)}
-          className={`px-5 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${value === v ? "bg-white shadow-sm text-[#0a0a0a]" : "text-[#667085]"}`}
-        >
-          {v}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// Hidden by default so an SSN or account number isn't on screen while the
-// agent shares their screen or works in public.
-function SecretInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="relative">
-      <DInput
-        type={show ? "text" : "password"}
-        autoComplete="new-password"
-        inputMode="numeric"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="pr-16"
-      />
-      <button type="button" onClick={() => setShow(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#667085] hover:text-[#0a0a0a]">
-        {show ? "Hide" : "Show"}
-      </button>
+          <div className="flex items-center justify-between gap-2 pt-2 pb-8">
+            <DBtn variant="danger" onClick={onDelete}>Delete questionnaire</DBtn>
+            <DBtn onClick={save} disabled={busy || !dirty}>{busy ? "Saving…" : "Save"}</DBtn>
+          </div>
+        </>
+      )}
     </div>
   );
 }

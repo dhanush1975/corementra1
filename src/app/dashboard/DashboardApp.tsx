@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { signOut } from "aws-amplify/auth";
-import { PROD_SEED, seedIncome } from "./data";
+import { download, PROD_SEED, seedIncome } from "./data";
+import { absorbClients, isAbsorbed, remapDb } from "./people";
+import { DBtn, Modal } from "./ui";
 import { useDb } from "./useDb";
 import { client } from "./client";
 import { diffAndSync, listAll } from "./sync";
-import type { IncomeData, PartnerIncome, Product, Sale, ScreenId } from "./types";
+import type { IncomeData, LegacyClient, PartnerIncome, Product, Sale, ScreenId } from "./types";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { EventsScreen } from "./screens/EventsScreen";
 import { BoothScreen } from "./screens/BoothScreen";
@@ -29,7 +31,7 @@ const NAV: { id: ScreenId; label: string; icon: string }[] = [
   { id: "followUps", label: "Follow-Ups", icon: "M20 12a8 8 0 1 1-4.4-7.1M9 12l2.6 2.6L20 6" },
   { id: "calendar", label: "Calendar", icon: "M7 3v4M17 3v4M4 9h16M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" },
   { id: "clients", label: "Clients", icon: "M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1M12 4a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7M17 13.5a4.5 4.5 0 0 1 4 4.5v1" },
-  { id: "applications", label: "Applications", icon: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4" },
+  { id: "applications", label: "Questionnaires", icon: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4" },
   { id: "products", label: "Products", icon: "M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10" },
   { id: "income", label: "Income", icon: "M12 3v18M16.5 7.5c0-1.9-2-3-4.5-3s-4.5 1.1-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3.3-2 3.2-4.5 3.2-4.5-1.1-4.5-3" },
   { id: "agents", label: "Agents", icon: "M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" },
@@ -41,12 +43,20 @@ const NAV: { id: ScreenId; label: string; icon: string }[] = [
 const SETTINGS_ID = "levels-singleton";
 
 export function DashboardApp() {
-  const { db, commit, toast, resetSeed, resetEmpty, loading: dbLoading } = useDb();
+  const { db, commit, adopt, toast, resetSeed, resetEmpty, loading: dbLoading } = useDb();
   const [screen, setScreen] = useState<ScreenId>("dashboard");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [income, setIncome] = useState<IncomeData>({ levels: [10, 5, 3], sales: [], partner: [] });
   const [dataLoading, setDataLoading] = useState(true);
+  // An application to open when switching to Applications from a person.
+  const [openAppId, setOpenAppId] = useState<string | null>(null);
+  // Rows still in the old, separate Clients table (see combineClients).
+  const [allLegacyClients, setLegacyClients] = useState<LegacyClient[]>([]);
+  // Old rows are kept as a backup after combining; only offer the ones
+  // that don't have their person yet.
+  const legacyClients = allLegacyClients.filter(c => !isAbsorbed(c, db.prospects));
+  const [combining, setCombining] = useState(false);
 
   useEffect(() => {
     if (dbLoading) return;
@@ -74,6 +84,9 @@ export function DashboardApp() {
       setProducts(seededProducts);
       setIncome(seededIncome);
       setDataLoading(false);
+      listAll<LegacyClient>(client.models.Client as any)
+        .then(rows => setLegacyClients(rows))
+        .catch(err => console.error("Old clients list failed to load:", err));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbLoading]);
@@ -106,6 +119,52 @@ export function DashboardApp() {
   };
 
   const go = (id: ScreenId) => { setScreen(id); setMobileNavOpen(false); };
+  const openApplication = (id: string) => { setOpenAppId(id); go("applications"); };
+
+  const remapSales = (idMap: Record<string, string>) => {
+    if (!income.sales.some(s => idMap[s.clientId])) return;
+    updateIncome({ ...income, sales: income.sales.map(s => (idMap[s.clientId] ? { ...s, clientId: idMap[s.clientId] } : s)) });
+  };
+
+  // One-time move of the old Clients table into the people list: each
+  // client joins the prospect they came from (or the same name + email),
+  // or becomes a person of their own; sales, purchases, feedback and
+  // applications follow; then the old rows are deleted.
+  const combineClients = async () => {
+    setCombining(true);
+    const { people, idMap } = absorbClients(db.prospects, legacyClients);
+    const fail = (msg: string) => {
+      setCombining(false);
+      window.alert(msg + " Nothing was removed from the old clients list; you can try again.");
+    };
+
+    // 1. Write the combined people and wait for every write to succeed.
+    //    The old client rows are only deleted once their new record is
+    //    confirmed saved, so a failure can never lose a client.
+    const before = new Map(db.prospects.map(p => [p.id, p]));
+    const changed = people.filter(p => JSON.stringify(before.get(p.id)) !== JSON.stringify(p));
+    for (const p of changed) {
+      const res = await (before.has(p.id) ? client.models.Prospect.update(p as any) : client.models.Prospect.create(p as any)).catch(e => ({ errors: [e] }));
+      if ((res as any).errors?.length) {
+        console.error("Combining failed on", p.name, (res as any).errors);
+        // Rows already written are harmless: combining again matches them
+        // by id and finishes the job.
+        return fail(`Couldn't save ${p.name}. Is the backend deployed (npx ampx sandbox)?`);
+      }
+    }
+    adopt({ ...db, prospects: people });
+
+    // 2. Point sales, purchases, feedback and applications at the people.
+    for (const [from, to] of Object.entries(idMap)) {
+      const res = await client.models.Application.list({ filter: { clientId: { eq: from } }, limit: 1000, selectionSet: ["id"] }).catch(() => null);
+      for (const a of res?.data ?? []) await client.mutations.linkApplication({ id: a.id, clientId: to }).catch(() => {});
+    }
+    commit(remapDb({ ...db, prospects: people }, idMap), `Combined ${legacyClients.length} clients into your people list`);
+    remapSales(idMap);
+
+    // The old Client rows are left exactly as they were, as a backup.
+    setCombining(false);
+  };
 
   if (dbLoading || dataLoading) {
     return (
@@ -171,19 +230,39 @@ export function DashboardApp() {
           {screen === "dashboard" && <DashboardScreen db={db} income={income} goFollowUps={() => go("followUps")} />}
           {screen === "events" && <EventsScreen db={db} commit={commit} />}
           {screen === "booth" && <BoothScreen db={db} commit={commit} />}
-          {screen === "pipeline" && <PipelineScreen db={db} commit={commit} />}
+          {screen === "pipeline" && <PipelineScreen db={db} commit={commit} income={income} setIncome={updateIncome} onOpenApplication={openApplication} />}
           {screen === "followUps" && <FollowUpsScreen db={db} commit={commit} />}
           {screen === "calendar" && <CalendarScreen db={db} commit={commit} />}
-          {screen === "clients" && <ClientsScreen db={db} income={income} commit={commit} />}
-          {screen === "applications" && <ApplicationsScreen db={db} />}
+          {screen === "clients" && <ClientsScreen db={db} income={income} commit={commit} setIncome={updateIncome} onOpenApplication={openApplication} />}
+          {screen === "applications" && <ApplicationsScreen db={db} commit={commit} openId={openAppId} onOpened={() => setOpenAppId(null)} />}
           {screen === "products" && <ProductsScreen products={products} setProducts={updateProducts} />}
           {screen === "income" && <IncomeScreen db={db} products={products} income={income} setIncome={updateIncome} />}
           {screen === "agents" && <AgentsScreen db={db} income={income} commit={commit} />}
           {screen === "automation" && <EmailAutomationScreen />}
           {screen === "blog" && <BlogScreen />}
-          {screen === "data" && <DataScreen db={db} income={income} commit={commit} resetSeed={() => resetSeed(seedIncomeSample)} resetEmpty={() => resetEmpty(clearIncome)} />}
+          {screen === "data" && <DataScreen db={db} income={income} commit={commit} resetSeed={() => resetSeed(seedIncomeSample)} resetEmpty={() => resetEmpty(clearIncome)} remapSales={remapSales} />}
         </div>
       </main>
+
+      {legacyClients.length > 0 && (
+        <Modal title="Combine clients and prospects" subtitle="One-time update" onClose={() => { if (!combining) setLegacyClients([]); }}>
+          <div className="flex flex-col gap-3 text-sm text-[#475467]">
+            <p>
+              Clients are now part of the same list as prospects, so each person has one record. You have{" "}
+              <strong className="text-[#0a0a0a]">{legacyClients.length}</strong> client{legacyClients.length === 1 ? "" : "s"} in the old list to move over.
+            </p>
+            <p>A client who came from a prospect (or has the same name and email) joins that record. Everyone else becomes a new record. Their sales, purchases, feedback and questionnaires move with them.</p>
+            <p className="text-xs text-[#98a2b3]">
+              Nothing is deleted: the old client records stay as they are, as a backup. Until you combine, those clients don't show on the Clients board.
+              You can close this and do it later; it's offered each time the dashboard opens.
+            </p>
+            <div className="flex justify-between gap-2 mt-2 flex-wrap">
+              <DBtn variant="secondary" onClick={() => download("crm-backup-before-combine.json", JSON.stringify({ ...db, clients: legacyClients }, null, 2), "application/json")}>Download backup first</DBtn>
+              <DBtn onClick={combineClients} disabled={combining}>{combining ? "Combining…" : "Combine now"}</DBtn>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

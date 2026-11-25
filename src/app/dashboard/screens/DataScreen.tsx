@@ -1,4 +1,5 @@
 import { download, EMPTY_DB, toCsv } from "../data";
+import { absorbClients, remapDb } from "../people";
 import { DBtn, DCard } from "../ui";
 import type { Db, IncomeData } from "../types";
 
@@ -6,21 +7,30 @@ const SCHEMA = [
   "events(event_id pk, name, starts_at, address, time_frame, expense, status, registered, attended)",
   "booths(booth_id pk, name, starts_at, address, time_frame, expense, status)",
   "booth_entries(entry_id pk, booth_id fk, prospect_id fk, name, email, phone, analysis_json, saved_at)",
-  "prospects(prospect_id pk, event_id fk, agent_id, name, email, phone, source, financial_need, stage, last_contact, notes)",
+  "prospects(person_id pk, event_id fk, event_ids[], agent_id, name, email, phone, address, source, financial_need, stage, last_contact, notes, client_type[client|partner|both], client_since) — everyone, one row per person (same name + email = same person)",
   "follow_ups(follow_up_id pk, prospect_id fk, agent_id, subject, type, due_at, status, note)",
-  "clients(client_id pk, prospect_id fk, name, email, phone, address, type[client|partner], agent_id, referral_source, since)",
-  "sales(sale_id pk, client_id fk, product_id fk, premium, base_pct, contract_pct, agent_id, status[pending|paid])",
+  "sales(sale_id pk, client_id fk→prospects, product_id fk, premium, base_pct, contract_pct, agent_id, status[pending|paid])",
   "partner_income(partner_income_id pk, agent_id, partner, amount, note)",
   "feedback(feedback_id pk, client_id fk, rating_1_5, comment, submitted_at)",
 ];
 
-export function DataScreen({ db, income, commit, resetSeed, resetEmpty }: { db: Db; income: IncomeData; commit: (db: Db, msg?: string) => void; resetSeed: () => void; resetEmpty: () => void }) {
+export function DataScreen({
+  db, income, commit, resetSeed, resetEmpty, remapSales,
+}: {
+  db: Db;
+  income: IncomeData;
+  commit: (db: Db, msg?: string) => void;
+  resetSeed: () => void;
+  resetEmpty: () => void;
+  // Points sales at new person ids after an old backup's clients are folded in.
+  remapSales: (idMap: Record<string, string>) => void;
+}) {
   const counts = [
     { label: "Events", n: db.events.length },
     { label: "Booths", n: db.booths.length },
-    { label: "Prospects", n: db.prospects.length },
+    { label: "Prospects", n: db.prospects.filter(p => !p.clientType).length },
     { label: "Follow-Ups", n: db.followUps.length },
-    { label: "Clients & Partners", n: db.clients.length },
+    { label: "Clients & Partners", n: db.prospects.filter(p => p.clientType).length },
     { label: "Sales", n: income.sales.length },
     { label: "Partner Income", n: income.partner.length },
     { label: "Feedback", n: db.feedback.length },
@@ -34,7 +44,16 @@ export function DataScreen({ db, income, commit, resetSeed, resetEmpty }: { db: 
     fr.onload = () => {
       try {
         // Backups made before a table existed (e.g. booths) lack its key.
-        commit({ ...EMPTY_DB, ...JSON.parse(String(fr.result)) }, "Backup restored");
+        // Backups from before clients and prospects were combined still
+        // have a separate "clients" list: fold it into the people.
+        const { clients: legacy, ...rest } = JSON.parse(String(fr.result));
+        let next: Db = { ...EMPTY_DB, ...rest };
+        if (Array.isArray(legacy) && legacy.length) {
+          const { people, idMap } = absorbClients(next.prospects, legacy);
+          next = remapDb({ ...next, prospects: people }, idMap);
+          remapSales(idMap);
+        }
+        commit(next, "Backup restored");
       } catch {
         commit(db, "That file could not be read as JSON");
       }

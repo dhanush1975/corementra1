@@ -1,6 +1,7 @@
 import { Clock, MapPin, CreditCard } from "lucide-react";
 import { useMemo, useState } from "react";
 import { initials, isFresh, money, shortDate } from "../data";
+import { eventsOf } from "../people";
 import { blankRecord } from "../forms";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
@@ -32,7 +33,7 @@ export function EventsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: st
     { key: "location", label: "Location", render: r => r.location },
     { key: "registered", label: "Registered", render: r => r.registered, sortValue: r => r.registered },
     { key: "attended", label: "Attended", render: r => r.attended, sortValue: r => r.attended },
-    { key: "prospects", label: "Prospects", render: r => db.prospects.filter(p => p.eventId === r.id).length },
+    { key: "prospects", label: "Prospects", render: r => db.prospects.filter(p => eventsOf(p).includes(r.id)).length },
     { key: "expense", label: "Expense", render: r => money(r.expense), sortValue: r => r.expense },
     { key: "status", label: "Status", render: r => <TagPill text={r.status} /> },
   ];
@@ -103,7 +104,7 @@ export function EventsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: st
           onOpen={setModal}
           countNoun="EVENT"
           renderCard={(r, col) => {
-            const peopleCount = db.prospects.filter(p => p.eventId === r.id).length;
+            const peopleCount = db.prospects.filter(p => eventsOf(p).includes(r.id)).length;
             return (
               <>
                 <BoardCardHeader
@@ -132,7 +133,7 @@ export function EventsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: st
       {peopleFor && (
         <Modal title={`People — ${peopleFor.name}`} subtitle={shortDate(peopleFor.date)} onClose={() => setPeopleFor(null)}>
           <div className="flex flex-col gap-2">
-            {db.prospects.filter(p => p.eventId === peopleFor.id).map(p => (
+            {db.prospects.filter(p => eventsOf(p).includes(peopleFor.id)).map(p => (
               <div key={p.id} className="flex items-center justify-between gap-3 py-2 border-b border-[#f4f5f7] last:border-0">
                 <div>
                   <div className="text-sm font-medium">{p.name}</div>
@@ -141,7 +142,7 @@ export function EventsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: st
                 <TagPill text={p.stage} />
               </div>
             ))}
-            {db.prospects.filter(p => p.eventId === peopleFor.id).length === 0 && <div className="text-sm text-[#98a2b3] py-4">No one linked to this event yet.</div>}
+            {db.prospects.filter(p => eventsOf(p).includes(peopleFor.id)).length === 0 && <div className="text-sm text-[#98a2b3] py-4">No one linked to this event yet.</div>}
           </div>
         </Modal>
       )}

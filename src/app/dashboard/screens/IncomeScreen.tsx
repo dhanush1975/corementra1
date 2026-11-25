@@ -28,7 +28,7 @@ export function IncomeScreen({ db, products, income, setIncome }: { db: Db; prod
   const partnerSum = partners.reduce((n, p) => n + p.amount, 0);
   const pending = sales.filter(s => s.status === "Pending").reduce((n, s) => n + saleWriting(s).writing, 0);
 
-  const clientName = (id: string) => db.clients.find(c => c.id === id)?.name || "—";
+  const clientName = (id: string) => db.prospects.find(c => c.id === id)?.name || "—";
 
   const saveSale = (rec: Sale) => {
     const exists = income.sales.some(s => s.id === rec.id);
@@ -161,7 +161,7 @@ function SaleForm({ rec, db, products, onSave, onCancel }: { rec: Sale; db: Db; 
       <Field label="Client">
         <DSelect value={draft.clientId} onChange={e => setDraft({ ...draft, clientId: e.target.value })}>
           <option value="">Choose client...</option>
-          {db.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {db.prospects.filter(c => c.clientType || c.id === draft.clientId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </DSelect>
       </Field>
       <div className="sm:col-span-2">

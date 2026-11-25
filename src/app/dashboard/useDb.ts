@@ -8,7 +8,6 @@ const MODELS = {
   events: client.models.Event,
   booths: client.models.Booth,
   prospects: client.models.Prospect,
-  clients: client.models.Client,
   purchases: client.models.Purchase,
   followUps: client.models.FollowUp,
   feedback: client.models.Feedback,
@@ -51,6 +50,13 @@ export function useDb() {
     });
   }, []);
 
+  // Takes rows that were already written to the cloud (and confirmed) into
+  // local state without writing them again.
+  const adopt = useCallback((next: Db) => {
+    dbRef.current = next;
+    setDb(next);
+  }, []);
+
   const resetSeed = useCallback((onConfirmed?: () => void) => {
     if (window.confirm("Replace all records with the sample data?")) {
       commit(seed(), "Sample data restored");
@@ -65,5 +71,5 @@ export function useDb() {
     }
   }, [commit]);
 
-  return { db, commit, toast, setToast, resetSeed, resetEmpty, loading };
+  return { db, commit, adopt, toast, setToast, resetSeed, resetEmpty, loading };
 }

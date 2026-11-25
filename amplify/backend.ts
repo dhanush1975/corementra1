@@ -1,6 +1,7 @@
 import { defineBackend } from '@aws-amplify/backend';
-import { Stack } from 'aws-cdk-lib';
+import { RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { Key } from 'aws-cdk-lib/aws-kms';
 import { CfnWebACL, CfnWebACLAssociation } from 'aws-cdk-lib/aws-wafv2';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
@@ -10,6 +11,7 @@ import { publicRsvp } from './functions/public-rsvp/resource';
 import { blogApi } from './functions/blog/api-resource';
 import { blogWriter } from './functions/blog/writer-resource';
 import { blogCron } from './functions/blog/cron-resource';
+import { applications } from './functions/applications/resource';
 
 const backend = defineBackend({
   auth,
@@ -20,6 +22,7 @@ const backend = defineBackend({
   blogApi,
   blogWriter,
   blogCron,
+  applications,
 });
 
 // Single-user dashboard: block public self-registration at the Cognito
@@ -41,6 +44,31 @@ backend.sendOccasionEmails.resources.lambda.addToRolePolicy(
   new PolicyStatement({
     actions: ['ses:SendEmail', 'ses:SendRawEmail'],
     resources: [`arn:aws:ses:${senderStack.region}:${senderStack.account}:identity/corementra.com`],
+    conditions: { StringEquals: { 'ses:FromAddress': 'contact@corementra.com' } },
+  }),
+);
+
+// Client applications: the questionnaire (SSNs, bank numbers, health) and
+// its documents are encrypted with this key, and only the applications
+// function may use it. RETAIN: if the stack is ever deleted the key must
+// outlive it, or every stored application becomes unreadable for good.
+const applicationsFn = backend.applications.resources.lambda;
+const applicationKey = new Key(Stack.of(applicationsFn), 'ApplicationKey', {
+  description: 'Encrypts client life insurance applications and their documents',
+  enableKeyRotation: true,
+  removalPolicy: RemovalPolicy.RETAIN,
+});
+applicationKey.grantEncryptDecrypt(applicationsFn);
+backend.applications.addEnvironment('APPLICATION_KEY_ARN', applicationKey.keyArn);
+backend.applications.addEnvironment('DOCS_BUCKET_NAME', backend.storage.resources.bucket.bucketName);
+backend.storage.resources.bucket.grantReadWrite(applicationsFn, 'applications/*');
+backend.storage.resources.bucket.grantDelete(applicationsFn, 'applications/*');
+// Emails questionnaire links, from the same one address as the birthday
+// emails.
+applicationsFn.addToRolePolicy(
+  new PolicyStatement({
+    actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+    resources: [`arn:aws:ses:${Stack.of(applicationsFn).region}:${Stack.of(applicationsFn).account}:identity/corementra.com`],
     conditions: { StringEquals: { 'ses:FromAddress': 'contact@corementra.com' } },
   }),
 );

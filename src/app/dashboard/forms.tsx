@@ -1,4 +1,4 @@
-import { AGENT_NAMES, branchOf, KINDS, NEEDS, PLANS, REGIONS, SOURCES, STAGES, today, uid } from "./data";
+import { AGENT_NAMES, branchOf, NEEDS, PLANS, REGIONS, SOURCES, STAGES, today, uid } from "./data";
 import type { Agent, Db } from "./types";
 
 export type FieldDef = {
@@ -6,7 +6,9 @@ export type FieldDef = {
   l: string;
   t: "text" | "date" | "time" | "select" | "number" | "area";
   options?: string[];
-  from?: keyof Db;
+  // Display text for option values that shouldn't show as-is (e.g. "").
+  labels?: Record<string, string>;
+  from?: keyof Db | "clients";
   fromAgents?: boolean;
   optional?: boolean;
   span2?: boolean;
@@ -33,7 +35,7 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
   ],
   prospects: [
     { k: "name", l: "Full name", t: "text" },
-    { k: "kind", l: "Is this a prospect or a client?", t: "select", options: [...KINDS] },
+    { k: "clientType", l: "Is this person a client?", t: "select", options: ["", "Client", "Partner", "Both"], labels: { "": "No — prospect" } },
     { k: "agent", l: "Added under (agent)", t: "select", fromAgents: true, optional: true },
     { k: "email", l: "Email", t: "text" },
     { k: "phone", l: "Phone", t: "text" },
@@ -57,9 +59,10 @@ export const ENTITY_FIELDS: Record<string, FieldDef[]> = {
     { k: "contactCount", l: "Times contacted", t: "number", optional: true },
     { k: "note", l: "Note", t: "area", span2: true },
   ],
+  // Clients are people (db.prospects) with clientType set.
   clients: [
     { k: "name", l: "Full name", t: "text" },
-    { k: "type", l: "Type", t: "select", options: ["Client", "Partner", "Both"] },
+    { k: "clientType", l: "Type", t: "select", options: ["Client", "Partner", "Both"] },
     { k: "email", l: "Email", t: "text" },
     { k: "phone", l: "Phone", t: "text" },
     { k: "address", l: "Address", t: "text", span2: true },
@@ -98,7 +101,7 @@ export const ENTITY_META: Record<string, { singular: string; plural: string }> =
   booths: { singular: "booth", plural: "Booths" },
   prospects: { singular: "contact", plural: "Prospects" },
   followUps: { singular: "follow-up", plural: "Follow-Ups" },
-  clients: { singular: "record", plural: "Clients" },
+  clients: { singular: "client", plural: "Clients" },
   purchases: { singular: "purchase", plural: "Commissions" },
   feedback: { singular: "response", plural: "Feedback" },
   agents: { singular: "agent", plural: "Agents" },
@@ -109,7 +112,8 @@ export function blankRecord(key: string): any {
   (ENTITY_FIELDS[key] || []).forEach(f => {
     rec[f.k] = f.t === "date" && !f.optional ? today() : f.t === "select" && f.options ? f.options[0] : f.t === "number" ? 0 : "";
   });
-  if (key === "prospects") { rec.stage = "NEW"; rec.plan = PLANS[0]; rec.eventId = ""; rec.kind = KINDS[0]; }
+  if (key === "prospects") { rec.stage = "NEW"; rec.plan = PLANS[0]; rec.eventId = ""; rec.kind = "Prospect"; }
+  if (key === "clients") Object.assign(rec, { stage: "CONVERTED", plan: PLANS[0], eventId: "", kind: "Client", need: NEEDS[0], lastContact: today(), notes: "", completedAt: new Date().toISOString() });
   if (key === "followUps") rec.status = "Open";
   if (key === "purchases") rec.agentPct = 10;
   if (key === "agents") { rec.region = REGIONS[0]; rec.status = "Active"; }
@@ -120,6 +124,13 @@ export function optionsFor(field: FieldDef, db: Db, agents: Agent[], record?: an
   if (field.fromAgents) {
     const names = agents.length ? agents.map(a => a.name) : AGENT_NAMES;
     return (field.optional ? [{ v: "", l: "— none —" }] : []).concat(names.map(n => ({ v: n, l: n })));
+  }
+  if (field.from === "clients") {
+    const list = db.prospects.filter(p => p.clientType);
+    const current = record?.[field.k];
+    // Keep a linked person selectable even if they're no longer a client.
+    const linked = current && !list.some(p => p.id === current) ? db.prospects.filter(p => p.id === current) : [];
+    return (field.optional ? [{ v: "", l: "— none —" }] : [{ v: "", l: "Select…" }]).concat([...linked, ...list].map(p => ({ v: p.id, l: p.name })));
   }
   if (field.from) {
     const list = (db[field.from] as any[]) || [];
@@ -140,5 +151,5 @@ export function optionsFor(field: FieldDef, db: Db, agents: Agent[], record?: an
   // selectable, so opening the record doesn't silently swap it out.
   const current = record?.[field.k];
   const all = current && !opts.includes(current) ? [current, ...opts] : opts;
-  return all.map(o => ({ v: o, l: o }));
+  return all.map(o => ({ v: o, l: field.labels?.[o] ?? o }));
 }

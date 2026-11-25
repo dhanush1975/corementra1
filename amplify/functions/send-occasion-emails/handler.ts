@@ -124,20 +124,39 @@ export const handler = async () => {
     return items;
   };
 
+  // Everyone is a Prospect row now; clientType marks clients/partners.
+  type Person = { id: string; name: string; email?: string | null; birthday?: string | null; since?: string | null; clientType?: string | null; type?: string | null; prospectId?: string | null };
+  const norm = (p: Person) => `${String(p.name || '').trim().replace(/\s+/g, ' ').toLowerCase()}|${String(p.email || '').trim().toLowerCase()}`;
+  const prospects = await listAll(client.models.Prospect as any) as Person[];
+  // Old rows stay in the Client table as a backup after being combined.
+  // A row whose person exists (same id, the "<prospect id>-c" id the old
+  // Convert button made, its prospectId, or the same name + email) is that
+  // person: its client details are used for them if they don't have their
+  // own yet, so nobody is emailed twice or missed. Others are included as
+  // they are.
+  const byId = new Map(prospects.map(p => [p.id, p]));
+  const byNorm = new Map(prospects.map(p => [norm(p), p]));
+  const legacy: Person[] = [];
+  for (const c of await listAll(client.models.Client as any) as Person[]) {
+    const match = byId.get(c.id) ?? byId.get(c.id.replace(/-c$/, '')) ?? (c.prospectId ? byId.get(c.prospectId) : undefined) ?? byNorm.get(norm(c));
+    if (!match) { legacy.push({ ...c, clientType: c.type || 'Client' }); continue; }
+    if (!match.clientType) { match.clientType = c.type || 'Client'; match.since = match.since || c.since; }
+    if (!match.birthday) match.birthday = c.birthday;
+    if (!match.email) match.email = c.email;
+  }
+  const people = [...prospects, ...legacy];
+
   if (birthdayTemplate) {
-    const clients = await listAll(client.models.Client as any) as Array<{ id: string; name: string; email?: string | null; birthday?: string | null }>;
-    const prospects = await listAll(client.models.Prospect as any) as Array<{ id: string; name: string; email?: string | null; birthday?: string | null }>;
-    for (const c of [...clients.map(c => ({ ...c, type: 'Client' as const })), ...prospects.map(p => ({ ...p, type: 'Prospect' as const }))]) {
+    for (const c of people) {
       if (!c.email || !EMAIL_RE.test(c.email) || !matchesMonthDay(c.birthday, month, day)) continue;
       if (await alreadySent(c.id, 'Birthday', year)) continue;
-      await send(birthdayTemplate, { id: c.id, type: c.type, name: c.name, email: c.email }, 'Birthday', { name: mergeName(c.name) });
+      await send(birthdayTemplate, { id: c.id, type: c.clientType ? 'Client' : 'Prospect', name: c.name, email: c.email }, 'Birthday', { name: mergeName(c.name) });
     }
   }
 
   if (anniversaryTemplate) {
-    const clients = await listAll(client.models.Client as any) as Array<{ id: string; name: string; email?: string | null; since?: string | null }>;
-    for (const c of clients) {
-      if (!c.email || !EMAIL_RE.test(c.email) || !c.since || !matchesMonthDay(c.since, month, day)) continue;
+    for (const c of people) {
+      if (!c.clientType || !c.email || !EMAIL_RE.test(c.email) || !c.since || !matchesMonthDay(c.since, month, day)) continue;
       const years = yearsSince(c.since, year);
       if (years < 1) continue;
       if (await alreadySent(c.id, 'Anniversary', year)) continue;

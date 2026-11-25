@@ -26,6 +26,48 @@ const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 // Drops control characters (keeps newlines/tabs) so notes are plain text.
 const cleanText = (v: string) => v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 
+// ---- One record per person ----------------------------------------------
+// Same rule as src/app/dashboard/people.ts: two entries are the same person
+// when the name and the email both match (case and spacing ignored). A
+// registration or booth analysis from someone already on file is attached
+// to their record instead of creating a copy.
+
+const normName = (s?: string | null) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const normEmail = (s?: string | null) => String(s || '').trim().toLowerCase();
+// A new note line is capped; existing notes are never trimmed. Past
+// NOTES_MAX_TOTAL the line is simply not added (the record still gets the
+// event, contact date, etc.).
+const NOTE_LINE_MAX = 1200;
+const NOTES_MAX_TOTAL = 20000;
+
+async function findPerson(name: string, email: string) {
+  const n = normName(name);
+  const e = normEmail(email);
+  let nextToken: string | null | undefined;
+  do {
+    const res = await client.models.Prospect.list({ limit: 1000, nextToken, selectionSet: ['id', 'name', 'email'] });
+    if (res.errors?.length) throw new Error('Could not look up existing people');
+    const hit = res.data.find(p => normEmail(p.email) === e && normName(p.name) === n);
+    if (hit) {
+      const { data } = await client.models.Prospect.get({ id: hit.id });
+      if (data) return data;
+    }
+    nextToken = res.nextToken;
+  } while (nextToken);
+  return null;
+}
+
+function appendNote(notes: string | null | undefined, line: string) {
+  const existing = notes ?? '';
+  const add = line.slice(0, NOTE_LINE_MAX);
+  if (existing.length + add.length + 2 > NOTES_MAX_TOTAL) return existing;
+  return existing.trim() ? `${existing.trimEnd()}\n\n${add}` : add;
+}
+
+// Someone who said no, or whose stage closed, is back in touch.
+const reopen = (stage: string | null | undefined, to: string) =>
+  stage === 'NOT INTERESTED' ? { stage: to, completedAt: null } : {};
+
 async function findEvent(id: string) {
   if (!ID_RE.test(id)) return null;
   const { data } = await client.models.Event.get({ id });
@@ -53,6 +95,33 @@ async function registerForEvent(args: Record<string, unknown>) {
   const event = await findEvent(str(args.eventId));
   if (!event) throw new Error('This registration link is not valid.');
   if (event.status === 'Completed') throw new Error('This event has already taken place.');
+
+  const today = new Date().toISOString().slice(0, 10);
+  const line = `Registered for ${event.name} on ${today}.` + (notes ? ` Message: ${notes}` : '');
+  const existing = await findPerson(name, email);
+  if (existing) {
+    const eventIds = (existing.eventIds ?? []).filter((x): x is string => !!x);
+    const first = existing.eventId || event.id;
+    if (first !== event.id && !eventIds.includes(event.id)) eventIds.push(event.id);
+    // Only ever moves a prospect forward; a client's stage is left alone.
+    const forward = !existing.clientType && (existing.stage === 'NEW' || existing.stage === 'CONTACTED') ? { stage: 'APPOINTMENT' } : {};
+    const { errors } = await client.models.Prospect.update({
+      id: existing.id,
+      eventId: first,
+      eventIds,
+      phone: existing.phone || phone,
+      need: !existing.need || existing.need === NEEDS[0] ? (NEEDS.includes(interest) ? interest : existing.need) : existing.need,
+      lastContact: today,
+      notes: appendNote(existing.notes, line),
+      ...forward,
+      ...reopen(existing.stage, 'APPOINTMENT'),
+    });
+    if (errors?.length) {
+      console.error('Prospect update failed', errors);
+      throw new Error('We could not save your details — please try again.');
+    }
+    return true;
+  }
 
   // Everything below the contact details is decided here, not by the
   // caller: a visitor can't pick a stage, an agent, a record type or a
@@ -172,6 +241,27 @@ async function saveBoothAnalysis(args: Record<string, unknown>) {
       }
     }
     return entryId;
+  }
+
+  // Someone already on file gets the analysis on their own record.
+  const line = `Financial needs analysis at ${booth.name} on ${savedAt.slice(0, 10)}.`;
+  const existing = await findPerson(name, email);
+  if (existing) {
+    const { errors: updateErrors } = await client.models.Prospect.update({
+      id: existing.id,
+      phone: existing.phone || phone,
+      lastContact: savedAt.slice(0, 10),
+      notes: appendNote(existing.notes, line),
+      ...reopen(existing.stage, 'NEW'),
+    });
+    if (updateErrors?.length) console.error('Prospect update failed', updateErrors);
+    const id = randomUUID();
+    const { errors } = await client.models.BoothEntry.create({ id, boothId: booth.id, prospectId: existing.id, name, email, phone, analysis, savedAt });
+    if (errors?.length) {
+      console.error('BoothEntry create failed', errors);
+      throw new Error('We could not save your details — please try again.');
+    }
+    return id;
   }
 
   // As with event registrations, the visitor decides only the contact

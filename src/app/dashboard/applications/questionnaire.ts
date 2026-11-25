@@ -123,19 +123,68 @@ export function parseQuestionnaire(json?: string | null): Questionnaire {
   };
 }
 
+// ---- Server-side cleaning ---------------------------------------------
+// Used by amplify/functions/applications before anything is encrypted and
+// stored: the result holds only the known fields, as capped plain strings,
+// whatever the caller sent.
+
+const TEXT_MAX = 300;
+const LONG_MAX = 2000;
+const LIST_MAX = 10;
+const LONG_FIELDS = new Set(["otherConditions", "medications"]);
+const YES_NO_FIELDS = new Set(["existingInsurance", "bloodPressure", "diabetes", "cholesterol"]);
+const DOC_NAME_RE = /^[^\u0000-\u001F/\\]{1,200}$/;
+
+const cleanStr = (v: unknown, max: number) =>
+  typeof v === "string" ? v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim().slice(0, max) : "";
+
+function cleanFields<T extends Record<string, any>>(raw: any, blank: T): T {
+  const out: Record<string, any> = {};
+  for (const key of Object.keys(blank)) {
+    const v = cleanStr(raw?.[key], LONG_FIELDS.has(key) ? LONG_MAX : TEXT_MAX);
+    out[key] = YES_NO_FIELDS.has(key) ? (v === "Yes" || v === "No" ? v : "") : v;
+  }
+  return out as T;
+}
+
+const cleanList = (raw: any): Beneficiary[] =>
+  (Array.isArray(raw) ? raw : []).slice(0, LIST_MAX).map(b => {
+    const { id: _id, ...fields } = blankBeneficiary();
+    return { ...cleanFields(b, fields), id: /^[a-z0-9]{1,16}$/.test(b?.id) ? b.id : newId() };
+  });
+
+// `docPrefix` is "applications/<application id>/": a document is kept only
+// if it lives in that application's own folder.
+export function docPathOk(path: unknown, docPrefix: string): path is string {
+  return typeof path === "string" && path.startsWith(docPrefix) && /^[\w./-]{1,300}$/.test(path) && !path.includes("..");
+}
+
+export function cleanQuestionnaire(raw: any, docPrefix: string): Questionnaire {
+  const blank = blankQuestionnaire();
+  const applicant = (a: any, b: Applicant): Applicant => {
+    const docs: Applicant["docs"] = {};
+    for (const { key } of DOC_SLOTS) {
+      const d = a?.docs?.[key];
+      const name = cleanStr(d?.name, 200);
+      if (docPathOk(d?.path, docPrefix) && DOC_NAME_RE.test(name)) docs[key] = { path: d.path, name };
+    }
+    return {
+      person: cleanFields(a?.person, b.person),
+      beneficiaries: cleanList(a?.beneficiaries),
+      contingent: cleanList(a?.contingent),
+      bank: cleanFields(a?.bank, b.bank),
+      health: cleanFields(a?.health, b.health),
+      docs,
+    };
+  };
+  return {
+    primary: applicant(raw?.primary, blank.primary),
+    includeSpouse: raw?.includeSpouse === true,
+    spouse: applicant(raw?.spouse, blank.spouse),
+  };
+}
+
 // Every storage path a questionnaire points at.
 export function docPaths(q: Questionnaire): string[] {
   return [q.primary, q.spouse].flatMap(a => Object.values(a.docs).filter((d): d is DocRef => !!d).map(d => d.path));
-}
-
-// How complete the main sections are, for the list view.
-export function progress(q: Questionnaire) {
-  const p = q.primary;
-  const checks = [
-    !!p.person.fullName && !!p.person.dob && !!p.person.ssn,
-    p.beneficiaries.some(b => b.fullName),
-    !!p.bank.accountNumber && !!p.bank.routingNumber,
-    !!p.health.bloodPressure && !!p.health.diabetes && !!p.health.cholesterol,
-  ];
-  return { done: checks.filter(Boolean).length, total: checks.length };
 }

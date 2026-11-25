@@ -1,9 +1,11 @@
 # The public site and blog are open to search engines. The dashboard and the
-# per-event registration and per-booth analysis links are private.
+# per-event registration, per-booth analysis and client application links
+# are private.
 User-agent: *
 Allow: /
 Disallow: /dashboard
 Disallow: /events/
 Disallow: /booth/
+Disallow: /apply/
 
 Sitemap: https://www.corementra.com/sitemap.xml

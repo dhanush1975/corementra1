@@ -4,6 +4,7 @@ import { publicRsvp } from '../functions/public-rsvp/resource';
 import { blogApi } from '../functions/blog/api-resource';
 import { blogWriter } from '../functions/blog/writer-resource';
 import { blogCron } from '../functions/blog/cron-resource';
+import { applications } from '../functions/applications/resource';
 
 /**
  * CRM dashboard schema. Mirrors src/app/dashboard/types.ts exactly.
@@ -43,8 +44,9 @@ const schema = a.schema({
   }).authorization(allow => [allow.authenticated()]),
 
   // One financial needs analysis filled in at a booth. Only the public-rsvp
-  // function writes these (saveBoothAnalysis below), so the dashboard can
-  // read and delete them but not edit what the visitor entered. `analysis`
+  // function creates these (saveBoothAnalysis below). The dashboard reads
+  // and deletes them, and updates one only to move it to another person
+  // when duplicates are merged. `analysis`
   // is the JSON of src/app/booth/fna.ts's Analysis, rebuilt field by field
   // by the function before it is stored.
   BoothEntry: a.model({
@@ -55,7 +57,7 @@ const schema = a.schema({
     phone: a.string(),
     analysis: a.string(),
     savedAt: a.string(),
-  }).authorization(allow => [allow.authenticated().to(['read', 'delete'])]),
+  }).authorization(allow => [allow.authenticated().to(['read', 'update', 'delete'])]),
 
   // No model is reachable with the public API key. The public
   // event-registration page (src/app/dashboard/EventRsvpPage.tsx) goes
@@ -85,8 +87,18 @@ const schema = a.schema({
     kind: a.string(),
     completedAt: a.string(),
     birthday: a.string(),
+    // A Prospect row is a person — prospect or client (see
+    // src/app/dashboard/people.ts). Client details:
+    clientType: a.string(),
+    since: a.string(),
+    address: a.string(),
+    // Events registered for after the first one (eventId).
+    eventIds: a.string().array(),
   }).authorization(allow => [allow.authenticated()]),
 
+  // LEGACY: clients used to be a separate list. The dashboard moves these
+  // rows into Prospect (clientType set) once, then deletes them; nothing
+  // writes here any more. Remove the model once it is empty everywhere.
   Client: a.model({
     name: a.string().required(),
     email: a.string(),
@@ -98,19 +110,30 @@ const schema = a.schema({
     since: a.string(),
     prospectId: a.string(),
     birthday: a.string(),
-  }).authorization(allow => [allow.authenticated()]),
+  }).authorization(allow => [allow.authenticated().to(['read', 'delete'])]),
 
-  // A life insurance application questionnaire the agent fills in for a
-  // client (primary insured, beneficiaries, bank, health, optional spouse,
-  // H1B documents). Holds SSNs and bank numbers, so it is never public and
-  // is kept out of the dashboard's JSON backup. `data` is the JSON of
-  // src/app/dashboard/applications/questionnaire.ts's Questionnaire.
+  // A client's life insurance application (the client questionnaire). Every
+  // answer — SSNs, bank numbers, health, DOB — is in `secret`, encrypted
+  // with the application KMS key by the applications function; only name,
+  // status and the link token are readable here. The dashboard can only
+  // read rows: every write goes through the operations further down, so
+  // nothing unencrypted is ever stored. `token` is the unguessable code in
+  // the client's /apply/<token> link.
   Application: a.model({
     name: a.string().required(),
     clientId: a.string(),
     status: a.string(),
-    data: a.string(),
-  }).authorization(allow => [allow.authenticated()]),
+    token: a.string(),
+    // The link works until linkExpiresAt (24 hours); resending replaces
+    // token and expiry. linkSentAt/To: when and where it was last emailed.
+    linkExpiresAt: a.string(),
+    linkSentAt: a.string(),
+    linkSentTo: a.string(),
+    submittedAt: a.string(),
+    secret: a.string(),
+  })
+    .secondaryIndexes(index => [index('token')])
+    .authorization(allow => [allow.authenticated().to(['read'])]),
 
   Purchase: a.model({
     clientId: a.string().required(),
@@ -263,6 +286,109 @@ const schema = a.schema({
     .authorization(allow => [allow.publicApiKey()])
     .handler(a.handler.function(publicRsvp)),
 
+  // ---- Client applications --------------------------------------------
+  // All run the applications function, which encrypts on the way in and
+  // decrypts on the way out (see Application above).
+
+  PublicApplication: a.customType({
+    name: a.string().required(),
+    // "open" (can still be filled in), "expired" (link older than 24
+    // hours) or "submitted" (locked).
+    status: a.string().required(),
+  }),
+
+  // A short-lived S3 POST form for one document: send `fields` plus the
+  // file to `url`. The file is stored KMS-encrypted at `path`.
+  UploadTicket: a.customType({
+    url: a.string().required(),
+    path: a.string().required(),
+    fields: a.string().required(),
+  }),
+
+  // The link sent to the client. It can't read anything back — not even
+  // what the client typed — only see the name and whether it's open.
+  getPublicApplication: a.query()
+    .arguments({ token: a.string().required() })
+    .returns(a.ref('PublicApplication'))
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(applications)),
+
+  publicApplicationUpload: a.mutation()
+    .arguments({ token: a.string().required(), who: a.string().required(), slot: a.string().required(), contentType: a.string().required(), size: a.integer().required() })
+    .returns(a.ref('UploadTicket'))
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(applications)),
+
+  // Submit once: the link locks afterwards.
+  submitApplication: a.mutation()
+    .arguments({ token: a.string().required(), data: a.string().required() })
+    .returns(a.boolean())
+    .authorization(allow => [allow.publicApiKey()])
+    .handler(a.handler.function(applications)),
+
+  // Signed-in dashboard only. Returns the new application's id.
+  createApplication: a.mutation()
+    .arguments({ name: a.string(), clientId: a.string() })
+    .returns(a.string())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
+  // Decrypts one application (questionnaire JSON).
+  openApplication: a.query()
+    .arguments({ id: a.string().required() })
+    .returns(a.string())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
+  saveApplication: a.mutation()
+    .arguments({ id: a.string().required(), data: a.string().required(), status: a.string(), clientId: a.string() })
+    .returns(a.boolean())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
+  applicationUpload: a.mutation()
+    .arguments({ id: a.string().required(), who: a.string().required(), slot: a.string().required(), contentType: a.string().required(), size: a.integer().required() })
+    .returns(a.ref('UploadTicket'))
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
+  // A 5-minute download link for one document.
+  applicationDocUrl: a.query()
+    .arguments({ id: a.string().required(), path: a.string().required() })
+    .returns(a.string())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
+  IssuedLink: a.customType({
+    url: a.string().required(),
+    expiresAt: a.string().required(),
+    // The address it was emailed to, when `send` was set.
+    sentTo: a.string(),
+  }),
+
+  // Makes a fresh 24-hour link for an open questionnaire (the old link
+  // stops working) and, with send, emails it to the linked person.
+  issueApplicationLink: a.mutation()
+    .arguments({ id: a.string().required(), origin: a.string().required(), send: a.boolean() })
+    .returns(a.ref('IssuedLink'))
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
+  // Points an application at a person (Prospect id), e.g. after merging
+  // duplicates. Doesn't touch the encrypted answers.
+  linkApplication: a.mutation()
+    .arguments({ id: a.string().required(), clientId: a.string().required() })
+    .returns(a.boolean())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
+  // Deletes the application and all its documents.
+  deleteApplication: a.mutation()
+    .arguments({ id: a.string().required() })
+    .returns(a.boolean())
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(applications)),
+
   // ---- Blog ----------------------------------------------------------
   // A published (or soft-deleted) article. `slug` is the key, so two
   // articles can never share a URL — a soft-deleted one still holds its
@@ -381,6 +507,7 @@ const schema = a.schema({
 }).authorization(allow => [
   allow.resource(sendOccasionEmails).to(['query', 'mutate']),
   allow.resource(publicRsvp).to(['query', 'mutate']),
+  allow.resource(applications).to(['query', 'mutate']),
   allow.resource(blogApi).to(['query', 'mutate']),
   allow.resource(blogWriter).to(['query', 'mutate']),
   allow.resource(blogCron).to(['query', 'mutate']),

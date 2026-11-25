@@ -1,4 +1,5 @@
-import type { Agent, Client, Db, EventRecord, Feedback, FollowUp, IncomeData, PartnerIncome, Product, Prospect, Purchase, Sale, Stage } from "./types";
+import { absorbClients } from "./people";
+import type { Agent, LegacyClient, Db, EventRecord, Feedback, FollowUp, IncomeData, PartnerIncome, Product, Prospect, Purchase, Sale, Stage } from "./types";
 
 export const STAGES: Stage[] = ["NEW", "CONTACTED", "APPOINTMENT", "IN PROCESS", "CONVERTED", "NOT INTERESTED"];
 export const STAGE_TITLES: Record<Stage, string> = {
@@ -130,7 +131,7 @@ export function seed(): Db {
     ["Omar Haddad", "o.haddad@mail.com", "(214) 555-0199", "5 Pine Ct, Dallas TX", "Client", AGENT_NAMES[1], "Booth", "2026-08-26"],
     ["Grace Mbeki", "g.mbeki@mail.com", "(469) 555-0112", "61 Maple Dr, Frisco TX", "Client", AGENT_NAMES[2], "Event / Workshop", "2026-08-30"],
   ];
-  const cl: Client[] = clRaw.map(r => ({ id: uid(), name: r[0], email: r[1], phone: r[2], address: r[3], type: r[4], agent: r[5], source: r[6], since: r[7] }));
+  const cl: LegacyClient[] = clRaw.map(r => ({ id: uid(), name: r[0], email: r[1], phone: r[2], address: r[3], type: r[4], agent: r[5], source: r[6], since: r[7] }));
   const byName = (n: string) => cl.find(c => c.name === n)?.id || "";
   const puRaw: [string, string, string, number][] = [
     ["Susan Reed", "Term life + IRA rollover", "2026-09-02", 48000],
@@ -171,10 +172,18 @@ export function seed(): Db {
     { id: "a7", name: "Victor Osei", uplineId: "a1", title: "Senior associate", email: "victor.osei@company.com", phone: "(214) 555-0106", joined: "2025-07-01", region: "East", status: "Active" },
     { id: "a8", name: "Nadia Kessler", uplineId: "a7", title: "Associate", email: "nadia.kessler@company.com", phone: "(214) 555-0107", joined: "2026-03-19", region: "South", status: "Active" },
   ];
-  return { events: ev, booths: [], prospects: pr, clients: cl, purchases: pu, followUps: fu, feedback: fb, agents: ag };
+  // Sample clients are written the old way and folded into the people
+  // list, the same path real old data takes.
+  const { people, idMap } = absorbClients(pr, cl);
+  const to = (id: string) => idMap[id] ?? id;
+  return {
+    events: ev, booths: [], prospects: people, followUps: fu, agents: ag,
+    purchases: pu.map(x => ({ ...x, clientId: to(x.clientId) })),
+    feedback: fb.map(x => ({ ...x, clientId: to(x.clientId) })),
+  };
 }
 
-export const EMPTY_DB: Db = { events: [], booths: [], prospects: [], clients: [], purchases: [], followUps: [], feedback: [], agents: [] };
+export const EMPTY_DB: Db = { events: [], booths: [], prospects: [], purchases: [], followUps: [], feedback: [], agents: [] };
 
 const DB_KEY = "crm.model.v1";
 
@@ -698,7 +707,7 @@ export function saveIncome(inc: IncomeData) {
 
 export function seedIncome(db: Db, products: Product[]): IncomeData {
   const ag = db.agents.map(a => a.name);
-  const cl = db.clients;
+  const cl = db.prospects.filter(p => p.clientType);
   const pr = products;
   const d = (m: number, day: number) => {
     const x = new Date();

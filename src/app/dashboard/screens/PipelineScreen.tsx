@@ -6,8 +6,11 @@ import { DateTimePicker } from "../DateTimePicker";
 import { RecordModal } from "../RecordModal";
 import { RecordTable, TagPill, type ColumnDef } from "../RecordTable";
 import { BoardCardHeader, BoardHint, BoardToggle, CardRow, KanbanBoard, type BoardColumn } from "../Board";
-import { DBtn, DCard, DInput } from "../ui";
-import type { Db, FollowUp, Prospect, Stage } from "../types";
+import { DBtn, DInput } from "../ui";
+import { PersonPanel } from "../PersonPanel";
+import { DuplicatesModal, mergeEverywhere, useDuplicateCount } from "../DuplicatesModal";
+import { duplicateMessage, findDuplicate, mergePerson, normalizeForSave } from "../people";
+import type { Db, FollowUp, IncomeData, Prospect, Stage } from "../types";
 
 const FOLLOWUP_TYPES: FollowUp["type"][] = ["Call", "Email", "Appointment", "Task"];
 
@@ -26,7 +29,17 @@ const COLUMNS: BoardColumn<Stage>[] = STAGES.map(s => ({ key: s, label: STAGE_TI
 // only offer it once someone's actually worked through to In Process.
 const CONVERTIBLE_STAGES: Stage[] = ["IN PROCESS", "CONVERTED"];
 
-export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: string) => void }) {
+export function PipelineScreen({
+  db, commit, income, setIncome, onOpenApplication,
+}: {
+  db: Db;
+  commit: (db: Db, msg?: string) => void;
+  income: IncomeData;
+  setIncome: (next: IncomeData) => void;
+  onOpenApplication: (id: string) => void;
+}) {
+  const [showDupes, setShowDupes] = useState(false);
+  const dupeCount = useDuplicateCount(db);
   const [view, setView] = useState<"board" | "table">("board");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState<Prospect | null>(null);
@@ -61,13 +74,34 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
     return rec;
   };
 
-  const save = (rec: Prospect) => {
-    const prev = db.prospects.find(r => r.id === rec.id);
+  const save = (draft: Prospect) => {
+    const prev = db.prospects.find(r => r.id === draft.id);
+    // One record per person: never save a second copy of someone.
+    const dup = findDuplicate(db.prospects, draft);
+    if (dup) {
+      // An existing record that now matches someone else has its own
+      // history to move over — that's what the Duplicates tool does.
+      if (prev) {
+        if (!window.confirm(`${dup.name} (${dup.email}) is already in your records. Merge this record into it? Its events, booth analyses, questionnaires, follow-ups and sales move over.`)) return;
+        setModal(null);
+        setSelected(null);
+        mergeEverywhere({ db, commit, income, setIncome }, dup, [draft]);
+        return;
+      }
+      if (!window.confirm(duplicateMessage(dup))) return;
+      const merged = normalizeForSave(mergePerson(dup, [draft]), dup);
+      setModal(null);
+      setSelected(s => (s && (s.id === dup.id || s.id === draft.id) ? merged : s));
+      commit({ ...db, prospects: db.prospects.filter(p => p.id !== draft.id).map(p => (p.id === dup.id ? merged : p)) }, "Updated " + merged.name);
+      return;
+    }
+    const rec = normalizeForSave(draft, prev);
     const finalRec = applyCompletion(rec, prev?.stage);
     const list = db.prospects.slice();
     const i = list.findIndex(r => r.id === finalRec.id);
     if (i >= 0) list[i] = finalRec; else list.unshift(finalRec);
     setModal(null);
+    setSelected(s => (s?.id === finalRec.id ? finalRec : s));
     commit({ ...db, prospects: list }, (i >= 0 ? "Saved " : "Added ") + finalRec.name);
   };
   const del = (rec: Prospect) => {
@@ -98,12 +132,14 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
     if (undoTimer.current) window.clearTimeout(undoTimer.current);
     setUndo(null);
   };
+  // A prospect becomes a client on the same record — no copy.
   const convert = (rec: Prospect, type: "Client" | "Partner" | "Both") => {
-    const exists = db.clients.find(c => c.name.trim().toLowerCase() === rec.name.trim().toLowerCase());
-    const clients = exists ? db.clients : [{ id: rec.id + "-c", name: rec.name, email: rec.email, phone: rec.phone, address: "", type, agent: rec.agent, source: rec.source, since: new Date().toISOString().slice(0, 10) }, ...db.clients];
-    const prospects = db.prospects.map(p => (p.id === rec.id ? applyCompletion({ ...p, stage: "CONVERTED" as Stage }, p.stage) : p));
+    const updated = applyCompletion(
+      { ...rec, clientType: type, kind: "Client", since: rec.since || new Date().toISOString().slice(0, 10), stage: "CONVERTED" },
+      rec.stage,
+    );
     setSelected(null);
-    commit({ ...db, clients, prospects }, rec.name + " converted to " + type.toLowerCase());
+    commit({ ...db, prospects: db.prospects.map(p => (p.id === rec.id ? updated : p)) }, rec.name + " converted to " + type.toLowerCase());
   };
 
   const hasOpenFollowUp = (p: Prospect) => db.followUps.some(f => f.prospectId === p.id && f.status === "Open");
@@ -124,6 +160,7 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
         </div>
         <div className="flex items-center gap-2">
           <DInput placeholder="Search prospects..." value={query} onChange={e => setQuery(e.target.value)} className="w-56" />
+          {dupeCount > 0 && <DBtn variant="secondary" onClick={() => setShowDupes(true)}>Duplicates ({dupeCount})</DBtn>}
           <DBtn onClick={() => setModal(blankRecord("prospects"))}>+ New prospect</DBtn>
         </div>
       </div>
@@ -193,53 +230,43 @@ export function PipelineScreen({ db, commit }: { db: Db; commit: (db: Db, msg?: 
       )}
 
       {selected && (
-        <DCard className="p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-[#98a2b3]">Prospect record</div>
-            <h3 className="text-lg font-bold mt-1">{selected.name}</h3>
-            <div className="text-[13px] leading-7 mt-2">
-              <div>{selected.email}</div>
-              <div>{selected.phone}</div>
-              <div>Source · {selected.source}</div>
-              <div>Need · {selected.need}</div>
-              <div>Agent · {selected.agent}</div>
-              <div>Last contact · {shortDate(selected.lastContact)}</div>
-            </div>
+        <PersonPanel
+          key={selected.id}
+          person={db.prospects.find(p => p.id === selected.id) ?? selected}
+          db={db}
+          income={income}
+          onOpenApplication={onOpenApplication}
+          onClose={() => setSelected(null)}
+        >
+          <div className="text-xs font-semibold mb-1">Stage · {STAGE_TITLES[selected.stage]}</div>
+          {selected.stage !== "CONVERTED" && (
+            <DBtn onClick={() => { const idx = STAGES.indexOf(selected.stage); const next = STAGES[Math.min(idx + 1, 4)]; moveStage(selected, next); setSelected({ ...selected, stage: next }); }}>
+              Advance to {STAGE_TITLES[STAGES[Math.min(STAGES.indexOf(selected.stage) + 1, 4)]]}
+            </DBtn>
+          )}
+          <div className="flex flex-col gap-1.5 py-1">
+            <label className="text-[11px] text-[#98a2b3] font-semibold">Add to Follow-Ups</label>
+            <select
+              value={fuType[selected.id] ?? "Call"}
+              onChange={e => setFuType(prev => ({ ...prev, [selected.id]: e.target.value as FollowUp["type"] }))}
+              className="h-9 w-full px-2.5 rounded-xl border border-[#e5e5e5] bg-white text-[13px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
+            >
+              {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <DateTimePicker date="" time="" placeholder="Pick date & time" onApply={(date, time) => addFollowUp(selected, date, time)} />
           </div>
-          <div>
-            <h5 className="text-xs uppercase tracking-wider text-[#98a2b3] mb-1.5">Notes</h5>
-            <p className="text-[13px] text-[#344054]">{selected.notes || "No notes yet."}</p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="text-xs font-semibold mb-1">Stage · {STAGE_TITLES[selected.stage]}</div>
-            {selected.stage !== "CONVERTED" && (
-              <DBtn onClick={() => { const idx = STAGES.indexOf(selected.stage); const next = STAGES[Math.min(idx + 1, 4)]; moveStage(selected, next); setSelected({ ...selected, stage: next }); }}>
-                Advance to {STAGE_TITLES[STAGES[Math.min(STAGES.indexOf(selected.stage) + 1, 4)]]}
-              </DBtn>
-            )}
-            <div className="flex flex-col gap-1.5 py-1">
-              <label className="text-[11px] text-[#98a2b3] font-semibold">Add to Follow-Ups</label>
-              <select
-                value={fuType[selected.id] ?? "Call"}
-                onChange={e => setFuType(prev => ({ ...prev, [selected.id]: e.target.value as FollowUp["type"] }))}
-                className="h-9 w-full px-2.5 rounded-xl border border-[#e5e5e5] bg-white text-[13px] text-[#0a0a0a] focus:outline-none focus:border-[#0070f3]"
-              >
-                {FOLLOWUP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <DateTimePicker date="" time="" placeholder="Pick date & time" onApply={(date, time) => addFollowUp(selected, date, time)} />
-            </div>
-            {CONVERTIBLE_STAGES.includes(selected.stage) && (
-              <>
-                <DBtn variant="secondary" onClick={() => convert(selected, "Client")}>Convert to Client</DBtn>
-                <DBtn variant="secondary" onClick={() => convert(selected, "Partner")}>Convert to Partner</DBtn>
-              </>
-            )}
-            <DBtn variant="secondary" onClick={() => setModal(selected)}>Edit record</DBtn>
-            <DBtn variant="danger" onClick={() => del(selected)}>Delete contact</DBtn>
-            <DBtn variant="ghost" onClick={() => setSelected(null)}>Close</DBtn>
-          </div>
-        </DCard>
+          {CONVERTIBLE_STAGES.includes(selected.stage) && !selected.clientType && (
+            <>
+              <DBtn variant="secondary" onClick={() => convert(selected, "Client")}>Convert to Client</DBtn>
+              <DBtn variant="secondary" onClick={() => convert(selected, "Partner")}>Convert to Partner</DBtn>
+            </>
+          )}
+          <DBtn variant="secondary" onClick={() => setModal(selected)}>Edit record</DBtn>
+          <DBtn variant="danger" onClick={() => del(selected)}>Delete contact</DBtn>
+        </PersonPanel>
       )}
+
+      {showDupes && <DuplicatesModal db={db} commit={commit} income={income} setIncome={setIncome} onClose={() => setShowDupes(false)} />}
 
       {modal && <RecordModal entityKey="prospects" record={modal} db={db} agents={db.agents} onSave={save} onDelete={() => del(modal)} onClose={() => setModal(null)} />}
 

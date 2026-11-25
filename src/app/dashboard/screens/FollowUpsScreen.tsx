@@ -182,7 +182,7 @@ export function FollowUpsScreen({ db, commit }: { db: Db; commit: (db: Db, msg?:
           onOpen={setModal}
           countNoun="TASK"
           renderCard={(r, col) => {
-            const isClient = db.clients.some(c => c.name === r.subject);
+            const isClient = !!db.prospects.find(p => p.id === r.prospectId)?.clientType;
             return (
               <>
                 <BoardCardHeader
